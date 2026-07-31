@@ -72,7 +72,7 @@ function Write-Log {
 }
 
 # -----------------------------------------------------------------
-# FUNCIONES PRINCIPALES DE UTILIDAD
+# FUNCIONES PRINCIPALES DE UTILIDAD Y DETECCIÓN DE LAUNCHER
 # -----------------------------------------------------------------
 function Initialize-Environment {
     Write-Log "Inicializando directorios de trabajo..." "INFO"
@@ -135,6 +135,72 @@ function Safe-ExtractArchive {
     catch {
         Write-Log "Error durante la extracción del paquete: $_" "ERROR"
         throw $_
+    }
+}
+
+function Check-And-LocateLaunchers {
+    Clear-Host
+    Write-Host "====================================================================" -ForegroundColor Cyan
+    Write-Host "                SELECCIÓN DE TIPO DE CUENTA (LAUNCHER)              " -ForegroundColor Cyan
+    Write-Host "====================================================================" -ForegroundColor Cyan
+    Write-Host "  ¿Cuentas con Minecraft Premium (Cuenta Oficial de Microsoft)?     " -ForegroundColor White
+    Write-Host "--------------------------------------------------------------------" -ForegroundColor Cyan
+    Write-Host "  [1] Sí (Tengo cuenta Premium -> Buscar Launcher Oficial)" -ForegroundColor Green
+    Write-Host "  [2] No (No tengo cuenta Premium -> Buscar/Instalar SKLauncher)" -ForegroundColor Yellow
+    Write-Host "====================================================================" -ForegroundColor Cyan
+    Write-Host ""
+
+    $AccountChoice = ""
+    while ($AccountChoice -ne "1" -and $AccountChoice -ne "2") {
+        $AccountChoice = Read-Host "  Selecciona una opción [1 o 2]"
+    }
+
+    if ($AccountChoice -eq "1") {
+        Write-Log "Usuario seleccionado: Cuenta Premium. Localizando Launcher Oficial..." "INFO"
+        
+        # Rutas comunes del Launcher Oficial en Windows
+        $PossibleOfficialPaths = @(
+            "$env:LOCALAPPDATA\Microsoft\WindowsApps\MinecraftLauncher.exe",
+            "$env:ProgramFiles\Minecraft Launcher\MinecraftLauncher.exe",
+            "${env:ProgramFiles(x86)}\Minecraft Launcher\MinecraftLauncher.exe"
+        )
+
+        $FoundOfficial = $false
+        foreach ($path in $PossibleOfficialPaths) {
+            if (Test-Path $path) {
+                Write-Log "¡Launcher Oficial localizado con éxito en: $path!" "SUCCESS"
+                $FoundOfficial = $true
+                break
+            }
+        }
+
+        if (-not $FoundOfficial) {
+            Write-Log "No se encontró el ejecutable del Launcher Oficial en las rutas estándar, pero el perfil se configurará de todas formas para cuando lo abras." "WARN"
+        }
+    } 
+    else {
+        Write-Log "Usuario seleccionado: No Premium. Localizando SKLauncher..." "INFO"
+        
+        $DesktopPath = [Environment]::GetFolderPath("Desktop")
+        $PossibleSKPaths = @(
+            (Join-Path $DesktopPath "SKlauncher.exe"),
+            "$env:APPDATA\sklauncher\SKlauncher.exe",
+            "$env:LOCALAPPDATA\Programs\sklauncher\SKlauncher.exe"
+        )
+
+        $FoundSK = $false
+        foreach ($path in $PossibleSKPaths) {
+            if (Test-Path $path) {
+                Write-Log "¡SKLauncher localizado con éxito en: $path!" "SUCCESS"
+                $FoundSK = $true
+                break
+            }
+        }
+
+        if (-not $FoundSK) {
+            Write-Log "SKLauncher no fue encontrado en el sistema. Procediendo a descargarlo e instalarlo..." "WARN"
+            Deploy-SKLauncher
+        }
     }
 }
 
@@ -262,14 +328,12 @@ function Configure-OfficialLauncherProfile {
         }
     }
 
-    # Forzar que el launcher seleccione por defecto nuestro perfil en la pantalla principal
     $JsonObject | Select-Object -Property * | Add-Member -MemberType NoteProperty -Name "selectedProfile" -Value $ProfileID -Force
 
     if ($null -eq $JsonObject.profiles) {
         $JsonObject | Add-Member -MemberType NoteProperty -Name "profiles" -Value ([PSCustomObject]@{})
     }
 
-    # Reconstruir el diccionario poniendo obligatoriamente a 'blackstickx' PRIMERO
     $ProfilesDict = [ordered]@{}
     $ProfilesDict[$ProfileID] = [PSCustomObject]$NewProfile
 
@@ -335,7 +399,7 @@ function Configure-SKLauncherProfile {
     }
 
     $ProfilesList = [System.Collections.Generic.List[object]]::new()
-    $ProfilesList.Add($NewProfile) # Añadir de primero para SKLauncher
+    $ProfilesList.Add($NewProfile)
 
     if (Test-Path $SKJsonPath) {
         try {
@@ -594,6 +658,8 @@ function Invoke-FullInstallation {
     Write-Log "INICIANDO INSTALACIÓN COMPLETA DE BLACKSTICKX" "INFO"
     Write-Log "=========================================" "INFO"
     
+    # Preguntar por premium/no premium y localizar launcher antes de ejecutar todo
+    Check-And-LocateLaunchers
     $ChosenRam = Get-UserRamChoice
     
     Initialize-Environment
@@ -628,6 +694,7 @@ function Invoke-UpdateWorkflow {
     Write-Log "INICIANDO ACTUALIZACIÓN (SOLO MODS Y CONFIG)" "INFO"
     Write-Log "=========================================" "INFO"
     
+    Check-And-LocateLaunchers
     $ChosenRam = Get-UserRamChoice
     
     Initialize-Environment
