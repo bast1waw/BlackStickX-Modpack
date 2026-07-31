@@ -7,7 +7,7 @@
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-# Prevenir errores de codificación en la consola (Caracteres extraños)
+# Prevenir errores de codificación en la consola
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -24,26 +24,26 @@ $ForgeTargetID        = "1.20.1-forge-47.4.22"
 $LogPath              = Join-Path $env:TEMP "BlackStickXInstaller.log"
 $WorkDir              = Join-Path $env:TEMP "BlackStickX_Setup"
 
+# Icono del Perfil en Base64 (Sustituye esta cadena con tu imagen convertida a Base64)
+# Debe empezar con "data:image/png;base64,..."
+$IconBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAA..." 
+
 # Directorios principales del modpack para gestionar
 $ModpackFolders = @("mods", "config", "defaultconfigs", "kubejs", "resourcepacks", "shaderpacks")
-
-# Objetivos específicos para el subsistema de actualización (Solo Mods y Config)
-$UpdateFolders = @("mods", "config")
+$UpdateFolders  = @("mods", "config")
 
 # Manifiesto de URLs de descarga
 $Downloads = @{
     "Config"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/config.zip";
     "Defaultconfigs" = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/defaultconfigs.zip";
-    "Forge"          = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/forge-1.20.1-47.4.22-installer.jar";
-    "Java18"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/jdk-18.0.2.1_windows-x64_bin.exe";
-    "Java21"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/jdk-21.0.11_windows-x64_bin.exe";
+    # REEMPLAZADO: Ahora descargamos el ZIP con la estructura de la versión de Forge ya extraída
+    "ForgeZip"       = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/forge-1.20.1-47.4.22-version.zip";
     "KubeJS"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/kubejs.zip";
     "Manifest"       = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/manifest.json";
     "Mods"           = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/mods.zip";
     "Resourcepacks"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/resourcepacks.zip";
     "ServersDat"     = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/servers.dat";
     "Shaderpacks"    = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/shaderpacks.zip";
-    "SKLauncherJar"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18.jar";
     "SKLauncherExe"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18_Setup.exe"
 }
 
@@ -202,7 +202,39 @@ function Get-UserRamChoice {
 }
 
 # -----------------------------------------------------------------
-# CONFIGURACIÓN DE PERFILES DE LAUNCHERS
+# DESPLIEGUE DIRECTO DE LA VERSIÓN DE FORGE (SIN EJECUTAR INSTALADOR)
+# -----------------------------------------------------------------
+function Remove-ForgeVersionFolder {
+    $ForgeVersionFolder = Join-Path $VersionsDir $ForgeTargetID
+    if (Test-Path $ForgeVersionFolder) {
+        try {
+            Write-Log "Eliminando versión anterior de Forge ($ForgeTargetID)..." "INFO"
+            Remove-Item -Path $ForgeVersionFolder -Recurse -Force
+            Write-Log "Carpeta removida con éxito." "SUCCESS"
+        }
+        catch {
+            Write-Log "No se pudo borrar la carpeta $ForgeTargetID." "WARN"
+        }
+    }
+}
+
+function Ensure-ForgeEnvironment {
+    Remove-ForgeVersionFolder
+
+    $TargetFolder = Join-Path $VersionsDir $ForgeTargetID
+    $LocalForgeZip = Join-Path $WorkDir "forge_version.zip"
+
+    Write-Log "Descargando la versión pre-configurada de Forge..." "INFO"
+    Invoke-SecureDownload -Url $Downloads["ForgeZip"] -DestinationPath $LocalForgeZip -FileName "Paquete de Forge Pre-instalado"
+    
+    Write-Log "Desplegando versión de Forge directamente en .minecraft/versions..." "INFO"
+    Safe-ExtractArchive -ZipPath $LocalForgeZip -ExtractLocation $TargetFolder
+
+    Write-Log "Estructura de Forge verificada correctamente en $TargetFolder." "SUCCESS"
+}
+
+# -----------------------------------------------------------------
+# CONFIGURACIÓN DE PERFILES Y CONEXIÓN DE ICONO
 # -----------------------------------------------------------------
 function Configure-OfficialLauncherProfile {
     Param (
@@ -216,8 +248,10 @@ function Configure-OfficialLauncherProfile {
     $JvmArgs   = "-Xmx${SelectedRamGB}G -XX:+UnlockExperimentalVMOptions -XX:+UseG1GC -XX:G1NewSizePercent=20 -XX:G1ReservePercent=20 -XX:MaxGCPauseMillis=50 -XX:G1HeapRegionSize=32M"
     $ProfileID = "a457530d7be7b05e6a135db4bc9b9a1b"
 
+    # Se incluye la propiedad 'icon' con la cadena base64 del logo
     $NewProfile = [ordered]@{
         "created"       = "2026-07-31T19:41:10.635Z"
+        "icon"          = $script:IconBase64
         "javaArgs"      = $JvmArgs
         "lastUsed"      = "1970-01-01T00:00:00.000Z"
         "lastVersionId" = $TargetForgeVersion
@@ -276,7 +310,7 @@ function Configure-OfficialLauncherProfile {
         if (-not (Test-Path $ParentDir)) { New-Item -ItemType Directory -Path $ParentDir | Out-Null }
 
         [System.IO.File]::WriteAllText($ProfilesJsonPath, $JsonString, $Utf8NoBom)
-        Write-Log "Perfil 'BlackStickX Server' actualizado exitosamente en launcher_profiles.json" "SUCCESS"
+        Write-Log "Perfil 'BlackStickX Server' actualizado exitosamente con icono en launcher_profiles.json" "SUCCESS"
     }
     catch {
         Write-Log "Error al escribir en launcher_profiles.json: $_" "ERROR"
@@ -422,134 +456,6 @@ function Deploy-SKLauncher {
     }
 }
 
-# -----------------------------------------------------------------
-# SUBSISTEMAS DE ENTORNO (VALIDACIÓN DE JAVA Y FORGE)
-# -----------------------------------------------------------------
-function Get-Java18Binary {
-    Write-Log "Buscando instalación de Java 18 en el sistema..." "INFO"
-    
-    $RegistryPaths = @(
-        "HKLM:\SOFTWARE\JavaSoft\Java Runtime Environment",
-        "HKLM:\SOFTWARE\JavaSoft\JDK",
-        "HKLM:\SOFTWARE\Eclipse Adoptium\JDK",
-        "HKLM:\SOFTWARE\Azul Systems\Zulu",
-        "HKCU:\SOFTWARE\JavaSoft\JDK"
-    )
-    
-    foreach ($RegPath in $RegistryPaths) {
-        if (Test-Path $RegPath) {
-            $Keys = Get-ChildItem -Path $RegPath -ErrorAction SilentlyContinue
-            foreach ($Key in $Keys) {
-                if ($Key.Name -match "18\.+|jdk-18.+") {
-                    $JavaHome = Get-ItemProperty -Path $Key.PSPath -Name "JavaHome" -ErrorAction SilentlyContinue
-                    if ($JavaHome) {
-                        $PathToCheck = Join-Path $JavaHome.JavaHome "bin\java.exe"
-                        if (Test-Path $PathToCheck) {
-                            Write-Log "Java 18 detectado en Registro: $PathToCheck" "SUCCESS"
-                            return $PathToCheck
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    $StandardPaths = @(
-        "$env:ProgramFiles\Java",
-        "${env:ProgramFiles(x86)}\Java",
-        "$env:ProgramFiles\Eclipse Foundation",
-        "$env:ProgramFiles\Zulu"
-    )
-
-    foreach ($Folder in $StandardPaths) {
-        if (Test-Path $Folder) {
-            $Executables = Get-ChildItem -Path $Folder -Filter "java.exe" -Recurse -ErrorAction SilentlyContinue
-            foreach ($Exe in $Executables) {
-                $VersionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($Exe.FullName)
-                if ($VersionInfo.ProductVersion -match "^18\." -or $VersionInfo.FileVersion -match "^18\.") {
-                    Write-Log "Java 18 detectado en archivos locales: $($Exe.FullName)" "SUCCESS"
-                    return $Exe.FullName
-                }
-            }
-        }
-    }
-
-    if (Get-Command java -ErrorAction SilentlyContinue) {
-        $SysVersion = & java -version 2>&1 | Out-String
-        if ($SysVersion -match 'version "18\.') {
-            $Path = (Get-Command java).Source
-            Write-Log "Java 18 activo en la variable PATH: $Path" "SUCCESS"
-            return $Path
-        }
-    }
-
-    return $null
-}
-
-function Ensure-Java18Environment {
-    $JavaPath = Get-Java18Binary
-    if ($JavaPath -eq $null) {
-        Write-Log "Java 18 no detectado. Iniciando instalación automática..." "WARN"
-        $LocalJavaExe = Join-Path $WorkDir "jdk18_installer.exe"
-        Invoke-SecureDownload -Url $Downloads["Java18"] -DestinationPath $LocalJavaExe -FileName "Instalador de Java 18"
-        
-        Write-Log "Ejecutando instalador de Java 18 en modo silencioso..." "INFO"
-        $Process = Start-Process -FilePath $LocalJavaExe -ArgumentList "/s" -PassThru -Wait
-        
-        $JavaPath = Get-Java18Binary
-        if ($JavaPath -eq $null) {
-            Write-Log "Error crítico: Se instaló Java 18 pero el sistema no pudo verificarlo." "ERROR"
-            throw "Error de dependencia: Java 18 ausente."
-        }
-    }
-    return $JavaPath
-}
-
-function Get-ForgeInstallationStatus {
-    $ExpectedJson = Join-Path $VersionsDir "$ForgeTargetID\$ForgeTargetID.json"
-    if (Test-Path $ExpectedJson) {
-        return $true
-    }
-    return $false
-}
-
-function Remove-ForgeVersionFolder {
-    $ForgeVersionFolder = Join-Path $VersionsDir $ForgeTargetID
-    if (Test-Path $ForgeVersionFolder) {
-        try {
-            Write-Log "Eliminando la versión de Forge existente ($ForgeTargetID)..." "INFO"
-            Remove-Item -Path $ForgeVersionFolder -Recurse -Force
-            Write-Log "Versión de Forge removida correctamente." "SUCCESS"
-        }
-        catch {
-            Write-Log "No se pudo borrar la carpeta $ForgeTargetID. Revisa si Minecraft está abierto." "WARN"
-        }
-    }
-}
-
-function Ensure-ForgeEnvironment {
-    Param([string]$JavaExecutable)
-    
-    Remove-ForgeVersionFolder
-
-    Write-Log "Iniciando descarga del instalador Forge $ForgeVersion..." "INFO"
-    $LocalForgeJar = Join-Path $WorkDir "forge_installer.jar"
-    Invoke-SecureDownload -Url $Downloads["Forge"] -DestinationPath $LocalForgeJar -FileName "Instalador de Forge"
-    
-    Write-Log "Abriendo la ventana de instalación de Forge..." "INFO"
-    Write-Log "--> En la ventana que se abra, asegúrate de presionar 'OK' (Install Client)." "WARN"
-
-    # Se ejecuta Java abriendo la interfaz gráfica oficial del instalador de Forge
-    $Process = Start-Process -FilePath $JavaExecutable -ArgumentList "-jar `"$LocalForgeJar`"" -WorkingDirectory $WorkDir -PassThru -Wait
-
-    # Verificar si tras cerrar el instalador se creó la carpeta en versions
-    if (-not (Get-ForgeInstallationStatus)) {
-        Write-Log "No se completó la instalación de Forge." "ERROR"
-        throw "La instalación de Forge fue cancelada o falló."
-    }
-    Write-Log "Forge Cliente se ha verificado correctamente en $VersionsDir\$ForgeTargetID." "SUCCESS"
-}
-
 function Clean-ModpackDirectories {
     Write-Log "Limpiando directorios antiguos del modpack..." "INFO"
     foreach ($Folder in $ModpackFolders) {
@@ -578,8 +484,7 @@ function Invoke-FullInstallation {
     $ChosenRam = Get-UserRamChoice
     
     Initialize-Environment
-    $JavaPath = Ensure-Java18Environment
-    Ensure-ForgeEnvironment -JavaExecutable $JavaPath
+    Ensure-ForgeEnvironment
     Clean-ModpackDirectories
 
     $Packages = @("Mods", "Config", "Defaultconfigs", "KubeJS", "Resourcepacks", "Shaderpacks")
