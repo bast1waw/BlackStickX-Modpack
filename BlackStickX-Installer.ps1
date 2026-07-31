@@ -26,7 +26,7 @@ $LogPath              = Join-Path $env:TEMP "BlackStickXInstaller.log"
 $WorkDir              = Join-Path $env:TEMP "BlackStickX_Setup"
 
 # Icono del Perfil en Base64
-$IconBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAMnUlEQVR4nO2dC1QVxxnH/xcBSQRqFCMQVEDSJqk2SKFiGqOoaVNrarKssagnJCcnsac1SdPq0WhOW09jajRRT2xz0oj4rG+tMa1RtDWW1hqi+AYfhYgiKCi+BbyX6RevelYSvPEjGEeW6a8c049qaaDoSvMlMWzTpqrAhw3LIjU1F10U1sg6hOfJmDHZ7TJ껑aanOkk3WzMewZ0+Z7bBw2Nl6eG9fL3a2z4W2PcfXN7w9QWl+n8aZl5s5V6M+PExJ8Xl10tPz20n/W4eFz4O4M2X3vI0lKStKy0n//O7rS5zZ7Vd+7v8lWzL59n+WwP683P3p45u53yR03g+q8vLh7nZ10M3oM/4fG6d5r+uK7V1W2M70wUo9v3e74rO+Yy1sP13+VzH4u9v7M8uYJvjZc3v1e8r9o7UjW0X/673/h7/ZqA+V5/0Zf8eG2uW7y/P//JcM6D2Y2X5YQpW3bWbV/5o89650d/+7P5s+f9P7b8P+Gf4wAAAABJRU5ErkJggg=="
+$IconBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAMnUlEQVR4nO2dC1QVxxnH/xcBSQRqFCMQVEDSJqk2SKFiGqOoaVNrarKssagnJCcnsac1SdPq0WhOW09jajRRT2xz0oj4rG+tMa1RtDWW1hqi+AYfhYgiKCI+BbyX6RevelYSvPEjGEeW6a8c049qaaDoSvMlMWzTpqrAhw3LIjU1F10U1sg6hOfJmDHZ7TJ껑aanOkk3WzMewZ0+Z7bBw2Nl6eG9fL3a2z4W2PcfXN7w9QWl+n8aZl5s5V6M+PExJ8Xl10tPz20n/W4eFz4O4M2X3vI0lKStKy0n//O7rS5zZ7Vd+7v8lWzL59n+WwP683P3p45u53yR03g+q8vLh7nZ10M3oM/4fG6d5r+uK7V1W2M70wUo9v3e74rO+Yy1sP13+VzH4u9v7M8uYJvjZc3v1e8r9o7UjW0X/673/h7/ZqA+V5/0Zf8eG2uW7y/P//JcM6D2Y2X5YQpW3bWbV/5o89650d/+7P5s+f9P7b8P+Gf4wAAAABJRU5ErkJggg=="
 
 # Directorios principales del modpack para gestionar
 $ModpackFolders = @("mods", "config", "defaultconfigs", "kubejs", "resourcepacks", "shaderpacks")
@@ -118,7 +118,8 @@ function Invoke-SecureDownload {
 function Safe-ExtractArchive {
     Param (
         [string]$ZipPath,
-        [string]$ExtractLocation
+        [string]$ExtractLocation,
+        [switch]$IsShaderpack
     )
     Write-Log "Extrayendo paquete $(Split-Path $ZipPath -Leaf)..." "INFO"
     try {
@@ -126,11 +127,36 @@ function Safe-ExtractArchive {
             New-Item -ItemType Directory -Path $ExtractLocation | Out-Null
         }
         
-        if (Get-Command Expand-Archive -ErrorAction SilentlyContinue) {
-            Expand-Archive -Path $ZipPath -DestinationPath $ExtractLocation -Force
-        } else {
-            [System.Reflection.Assembly]::LoadWithPartialName("System.IO.Compression.FileSystem") | Out-Null
-            [System.IO.Compression.ZipFile]::ExtractToDirectory($ZipPath, $ExtractLocation)
+        # Caso especial para shaders: evita crear subcarpetas anidadas si el zip contiene una carpeta con el mismo nombre
+        if ($IsShaderpack) {
+            $TempExtractDir = Join-Path $WorkDir "temp_shaders_extract"
+            if (Test-Path $TempExtractDir) { Remove-Item $TempExtractDir -Recurse -Force }
+            New-Item -ItemType Directory -Path $TempExtractDir | Out-Null
+
+            if (Get-Command Expand-Archive -ErrorAction SilentlyContinue) {
+                Expand-Archive -Path $ZipPath -DestinationPath $TempExtractDir -Force
+            } else {
+                [System.Reflection.Assembly]::LoadWithPartialName("System.IO.Compression.FileSystem") | Out-Null
+                [System.IO.Compression.ZipFile]::ExtractToDirectory($ZipPath, $TempExtractDir)
+            }
+
+            # Comprobar si se extrajo dentro de una única carpeta contenedora
+            $SubItems = Get-ChildItem -Path $TempExtractDir
+            if ($SubItems.Count -eq 1 -and $SubItems[0].PSIsContainer) {
+                $InnerDir = $SubItems[0].FullName
+                Get-ChildItem -Path $InnerDir | Move-Item -Destination $ExtractLocation -Force
+            } else {
+                Get-ChildItem -Path $TempExtractDir | Move-Item -Destination $ExtractLocation -Force
+            }
+            Remove-Item -Path $TempExtractDir -Recurse -Force -ErrorAction SilentlyContinue
+        } 
+        else {
+            if (Get-Command Expand-Archive -ErrorAction SilentlyContinue) {
+                Expand-Archive -Path $ZipPath -DestinationPath $ExtractLocation -Force
+            } else {
+                [System.Reflection.Assembly]::LoadWithPartialName("System.IO.Compression.FileSystem") | Out-Null
+                [System.IO.Compression.ZipFile]::ExtractToDirectory($ZipPath, $ExtractLocation)
+            }
         }
     }
     catch {
@@ -191,7 +217,6 @@ function Check-InitialLauncherSetup {
     else {
         Write-Log "El usuario indicó que NO tiene Minecraft original. Verificando SKLauncher..." "INFO"
         
-        # Validación estricta con la ruta exacta indicada por el usuario
         if (Test-Path $SKLauncherJarPath) {
             Write-Host "  SKLauncher detectado en: $SKLauncherJarPath" -ForegroundColor Green
             Write-Log "SKLauncher detectado en: $SKLauncherJarPath" "SUCCESS"
@@ -219,7 +244,6 @@ function Deploy-SKLauncherAndWait {
         
         Start-Process -FilePath $InstallerDest -Wait
 
-        # Bucle de comprobación estricta esperando exactamente el JAR en su ruta final
         $TimeoutSeconds = 600
         $Elapsed = 0
 
@@ -240,9 +264,6 @@ function Deploy-SKLauncherAndWait {
     }
 }
 
-# -----------------------------------------------------------------
-# SUBSISTEMA DE GESTIÓN DINÁMICA DE MEMORIA RAM
-# -----------------------------------------------------------------
 function Get-UserRamChoice {
     Write-Log "Detectando memoria RAM física del sistema..." "INFO"
     
@@ -306,9 +327,6 @@ function Get-UserRamChoice {
     return $SelectedRam
 }
 
-# -----------------------------------------------------------------
-# CONFIGURACIÓN DE PERFILES DE LAUNCHERS CON ICONO Y PRIORIDAD
-# -----------------------------------------------------------------
 function Configure-OfficialLauncherProfile {
     Param (
         [int]$SelectedRamGB = 8
@@ -530,9 +548,6 @@ function Remove-LauncherProfiles {
     }
 }
 
-# -----------------------------------------------------------------
-# SUBSISTEMAS DE ENTORNO (VALIDACIÓN DE JAVA Y FORGE)
-# -----------------------------------------------------------------
 function Get-Java18Binary {
     Write-Log "Buscando instalación de Java 18 en el sistema..." "INFO"
     
@@ -666,16 +681,13 @@ function Clean-ModpackDirectories {
                 Write-Log "Carpeta purgada: /$Folder" "INFO"
             }
             catch {
-                Write-Log "No se pudo eliminar la carpeta $Folder. Asegúrate de que Minecraft não esté abierto." "WARN"
+                Write-Log "No se pudo eliminar la carpeta $Folder. Asegúrate de que Minecraft no esté abierto." "WARN"
             }
         }
     }
     Write-Log "Fase de limpieza completada." "SUCCESS"
 }
 
-# -----------------------------------------------------------------
-# RUTINAS PRINCIPALES (INSTALAR / ACTUALIZAR / REPARAR / DESINSTALAR)
-# -----------------------------------------------------------------
 function Invoke-FullInstallation {
     Write-Log "=========================================" "INFO"
     Write-Log "INICIANDO INSTALACIÓN COMPLETA DE BLACKSTICKX" "INFO"
@@ -694,7 +706,12 @@ function Invoke-FullInstallation {
         Invoke-SecureDownload -Url $Downloads[$Pkg] -DestinationPath $ZipDest -FileName "Paquete $Pkg"
         
         $TargetFolder = Join-Path $MinecraftDir ($Pkg.ToLower())
-        Safe-ExtractArchive -ZipPath $ZipDest -ExtractLocation $TargetFolder
+        
+        if ($Pkg -eq "Shaderpacks") {
+            Safe-ExtractArchive -ZipPath $ZipDest -ExtractLocation $TargetFolder -IsShaderpack
+        } else {
+            Safe-ExtractArchive -ZipPath $ZipDest -ExtractLocation $TargetFolder
+        }
     }
 
     $ServerDatPath = Join-Path $MinecraftDir "servers.dat"
@@ -782,13 +799,10 @@ function Invoke-Uninstallation {
 }
 
 # -----------------------------------------------------------------
-# FLUJO PRINCIPAL Y MENÚ (EJECUTA LA PREGUNTA INICIAL PRIMERO)
+# FLUJO PRINCIPAL Y MENÚ
 # -----------------------------------------------------------------
-
-# 1. Ejecutar la consulta del launcher antes de mostrar cualquier pantalla de instalación
 Check-InitialLauncherSetup
 
-# 2. Mostrar la interfaz de opciones del instalador una vez hecha la comprobación
 function Show-MainMenu {
     Clear-Host
     Write-Host "`n====================================================================" -ForegroundColor Cyan
