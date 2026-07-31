@@ -205,13 +205,13 @@ function Get-UserRamChoice {
 }
 
 # -----------------------------------------------------------------
-# CONFIGURACIÓN DE PERFILES DE LAUNCHERS CON ICONO
+# CONFIGURACIÓN DE PERFILES DE LAUNCHERS CON ICONO Y PRIORIDAD
 # -----------------------------------------------------------------
 function Configure-OfficialLauncherProfile {
     Param (
         [int]$SelectedRamGB = 8
     )
-    Write-Log "Configurando el perfil 'blackstickx' en launcher_profiles.json..." "INFO"
+    Write-Log "Configurando el perfil 'blackstickx' como principal en launcher_profiles.json..." "INFO"
     
     $TargetForgeVersion = if ($script:ForgeTargetID) { $script:ForgeTargetID } else { "1.20.1-forge-47.4.22" }
     $ProfilesJsonPath   = if ($script:OfficialProfilesJson) { $script:OfficialProfilesJson } else { Join-Path $env:APPDATA ".minecraft\launcher_profiles.json" }
@@ -223,7 +223,7 @@ function Configure-OfficialLauncherProfile {
         "created"       = "2026-07-31T19:41:10.635Z"
         "icon"          = $script:IconBase64
         "javaArgs"      = $JvmArgs
-        "lastUsed"      = "1970-01-01T00:00:00.000Z"
+        "lastUsed"      = (Get-Date -Format "yyyy-MM-ddTHH:mm:ss.fffZ")
         "lastVersionId" = $TargetForgeVersion
         "name"          = "BlackStickX Server"
         "type"          = "custom"
@@ -262,26 +262,32 @@ function Configure-OfficialLauncherProfile {
         }
     }
 
+    # Forzar que el launcher seleccione por defecto nuestro perfil en la pantalla principal
+    $JsonObject | Select-Object -Property * | Add-Member -MemberType NoteProperty -Name "selectedProfile" -Value $ProfileID -Force
+
     if ($null -eq $JsonObject.profiles) {
         $JsonObject | Add-Member -MemberType NoteProperty -Name "profiles" -Value ([PSCustomObject]@{})
     }
 
+    # Reconstruir el diccionario poniendo obligatoriamente a 'blackstickx' PRIMERO
     $ProfilesDict = [ordered]@{}
+    $ProfilesDict[$ProfileID] = [PSCustomObject]$NewProfile
+
     $Props = Get-Member -InputObject $JsonObject.profiles -MemberType NoteProperty
     foreach ($prop in $Props) {
         $pName = $prop.Name
-        $pData = $JsonObject.profiles.$pName
-        
-        $isGenericForge = ($pData.lastVersionId -eq $TargetForgeVersion -and $pName -ne $ProfileID)
-        
-        if (-not $isGenericForge) {
-            $ProfilesDict[$pName] = $pData
-        } else {
-            Write-Log "Removiendo perfil automático residual de Forge ($pName)..." "INFO"
+        if ($pName -ne $ProfileID) {
+            $pData = $JsonObject.profiles.$pName
+            $isGenericForge = ($pData.lastVersionId -eq $TargetForgeVersion)
+            
+            if (-not $isGenericForge) {
+                $ProfilesDict[$pName] = $pData
+            } else {
+                Write-Log "Removiendo perfil automático residual de Forge ($pName)..." "INFO"
+            }
         }
     }
 
-    $ProfilesDict[$ProfileID] = [PSCustomObject]$NewProfile
     $JsonObject.profiles = $ProfilesDict
 
     try {
@@ -292,7 +298,7 @@ function Configure-OfficialLauncherProfile {
         if (-not (Test-Path $ParentDir)) { New-Item -ItemType Directory -Path $ParentDir | Out-Null }
 
         [System.IO.File]::WriteAllText($ProfilesJsonPath, $JsonString, $Utf8NoBom)
-        Write-Log "Perfil 'blackstickx' guardado exitosamente en launcher_profiles.json." "SUCCESS"
+        Write-Log "Perfil 'blackstickx' configurado como principal y en la primera posición." "SUCCESS"
     }
     catch {
         Write-Log "Error al escribir en launcher_profiles.json: $_" "ERROR"
@@ -329,6 +335,7 @@ function Configure-SKLauncherProfile {
     }
 
     $ProfilesList = [System.Collections.Generic.List[object]]::new()
+    $ProfilesList.Add($NewProfile) # Añadir de primero para SKLauncher
 
     if (Test-Path $SKJsonPath) {
         try {
@@ -349,8 +356,6 @@ function Configure-SKLauncherProfile {
         }
     }
 
-    $ProfilesList.Add($NewProfile)
-
     $ProfilesStructure = [ordered]@{
         "profiles" = $ProfilesList.ToArray()
     }
@@ -359,7 +364,7 @@ function Configure-SKLauncherProfile {
     $JsonOutput = ConvertTo-Json $ProfilesStructure -Depth 10
     [System.IO.File]::WriteAllText($SKJsonPath, $JsonOutput, $Utf8NoBom)
 
-    Write-Log "Perfil 'BlackStickX Server' sincronizado en SKLauncher con ${SelectedRamGB}GB de RAM." "SUCCESS"
+    Write-Log "Perfil 'BlackStickX Server' sincronizado y colocado primero en SKLauncher con ${SelectedRamGB}GB de RAM." "SUCCESS"
 }
 
 function Remove-LauncherProfiles {
@@ -574,7 +579,7 @@ function Clean-ModpackDirectories {
                 Write-Log "Carpeta purgada: /$Folder" "INFO"
             }
             catch {
-                Write-Log "No se pudo eliminar la carpeta $Folder. Asegúrate de que Minecraft não esté abierto." "WARN"
+                Write-Log "No se pudo eliminar la carpeta $Folder. Asegúrate de que Minecraft no esté abierto." "WARN"
             }
         }
     }
@@ -701,7 +706,7 @@ function Show-MainMenu {
     Write-Host "  Versión del Modpack: 1.20.1 | Forge: $ForgeVersion" -ForegroundColor Gray
     Write-Host "  Ruta de Instalación: $MinecraftDir" -ForegroundColor Gray
     Write-Host "--------------------------------------------------------------------" -ForegroundColor Cyan
-    Write-Host "  [1] Instalar (Instalación limpia completa + Crear perfil)" -ForegroundColor White
+    Write-Host "  [1] Instalar (Instalación limpia completa + Crear perfil principal)" -ForegroundColor White
     Write-Host ""
     Write-Host "  [2] Actualizar (Solo Mods y Config, mantiene tus opciones)" -ForegroundColor White
     Write-Host ""
@@ -725,7 +730,7 @@ do {
             "1" {
                 Invoke-FullInstallation
                 Write-Host "`n¡Instalación completada!" -ForegroundColor Green
-                Write-Host "El perfil 'blackstickx' ha sido añadido a tu launcher con la RAM seleccionada." -ForegroundColor Green
+                Write-Host "El perfil 'BlackStickX Server' está configurado de primero y listo para jugar." -ForegroundColor Green
                 Write-Host "Presiona cualquier tecla para volver al menú principal..." -ForegroundColor White
                 [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }
