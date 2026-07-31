@@ -72,7 +72,7 @@ function Write-Log {
 }
 
 # -----------------------------------------------------------------
-# FUNCIONES PRINCIPALES DE UTILIDAD Y DETECCIÓN DE LAUNCHER
+# FUNCIONES PRINCIPALES DE UTILIDAD Y DETECCIÓN PREVIA
 # -----------------------------------------------------------------
 function Initialize-Environment {
     Write-Log "Inicializando directorios de trabajo..." "INFO"
@@ -138,27 +138,22 @@ function Safe-ExtractArchive {
     }
 }
 
-function Check-And-LocateLaunchers {
+function Check-InitialLauncherSetup {
     Clear-Host
     Write-Host "====================================================================" -ForegroundColor Cyan
-    Write-Host "                SELECCIÓN DE TIPO DE CUENTA (LAUNCHER)              " -ForegroundColor Cyan
+    Write-Host "                  VERIFICACIÓN INICIAL DE CUENTA                    " -ForegroundColor Cyan
     Write-Host "====================================================================" -ForegroundColor Cyan
-    Write-Host "  ¿Cuentas con Minecraft Premium (Cuenta Oficial de Microsoft)?     " -ForegroundColor White
+    Write-Host "  ¿Tienes el Minecraft original?                                    " -ForegroundColor White
     Write-Host "--------------------------------------------------------------------" -ForegroundColor Cyan
-    Write-Host "  [1] Sí (Tengo cuenta Premium -> Buscar Launcher Oficial)" -ForegroundColor Green
-    Write-Host "  [2] No (No tengo cuenta Premium -> Buscar/Instalar SKLauncher)" -ForegroundColor Yellow
-    Write-Host "====================================================================" -ForegroundColor Cyan
-    Write-Host ""
-
-    $AccountChoice = ""
-    while ($AccountChoice -ne "1" -and $AccountChoice -ne "2") {
-        $AccountChoice = Read-Host "  Selecciona una opción [1 o 2]"
+    
+    $Response = ""
+    while ($Response -ne "si" -and $Response -ne "s" -and $Response -ne "no" -and $Response -ne "n") {
+        $Response = (Read-Host "  Responde [si / no]").Trim().ToLower()
     }
 
-    if ($AccountChoice -eq "1") {
-        Write-Log "Usuario seleccionado: Cuenta Premium. Localizando Launcher Oficial..." "INFO"
+    if ($Response -eq "si" -or $Response -eq "s") {
+        Write-Log "El usuario indicó que tiene Minecraft original. Buscando ejecutable..." "INFO"
         
-        # Rutas comunes del Launcher Oficial en Windows
         $PossibleOfficialPaths = @(
             "$env:LOCALAPPDATA\Microsoft\WindowsApps\MinecraftLauncher.exe",
             "$env:ProgramFiles\Minecraft Launcher\MinecraftLauncher.exe",
@@ -168,18 +163,20 @@ function Check-And-LocateLaunchers {
         $FoundOfficial = $false
         foreach ($path in $PossibleOfficialPaths) {
             if (Test-Path $path) {
-                Write-Log "¡Launcher Oficial localizado con éxito en: $path!" "SUCCESS"
+                Write-Host "  Minecraft Original Detectado en: $path" -ForegroundColor Green
+                Write-Log "Minecraft Original Detectado en: $path" "SUCCESS"
                 $FoundOfficial = $true
                 break
             }
         }
 
         if (-not $FoundOfficial) {
-            Write-Log "No se encontró el ejecutable del Launcher Oficial en las rutas estándar, pero el perfil se configurará de todas formas para cuando lo abras." "WARN"
+            Write-Host "  Minecraft Original Detectado (Ruta estándar no localizada, pero se configurará el perfil)." -ForegroundColor Yellow
+            Write-Log "Minecraft Original Detectado (Ruta estándar no hallada físicamente)." "WARN"
         }
     } 
     else {
-        Write-Log "Usuario seleccionado: No Premium. Localizando SKLauncher..." "INFO"
+        Write-Log "El usuario indicó que NO tiene Minecraft original. Buscando SKLauncher..." "INFO"
         
         $DesktopPath = [Environment]::GetFolderPath("Desktop")
         $PossibleSKPaths = @(
@@ -191,17 +188,22 @@ function Check-And-LocateLaunchers {
         $FoundSK = $false
         foreach ($path in $PossibleSKPaths) {
             if (Test-Path $path) {
-                Write-Log "¡SKLauncher localizado con éxito en: $path!" "SUCCESS"
+                Write-Host "  SKLauncher detectado en: $path" -ForegroundColor Green
+                Write-Log "SKLauncher detectado en: $path" "SUCCESS"
                 $FoundSK = $true
                 break
             }
         }
 
         if (-not $FoundSK) {
-            Write-Log "SKLauncher no fue encontrado en el sistema. Procediendo a descargarlo e instalarlo..." "WARN"
+            Write-Host "  SKLauncher no encontrado. Procediendo a descargarlo e instalarlo..." -ForegroundColor Yellow
+            Write-Log "SKLauncher no fue hallado. Iniciando instalación..." "WARN"
             Deploy-SKLauncher
         }
     }
+
+    Write-Host "`n  Verificación completada. Abriendo el instalador..." -ForegroundColor Cyan
+    Start-Sleep -Seconds 2
 }
 
 # -----------------------------------------------------------------
@@ -643,7 +645,7 @@ function Clean-ModpackDirectories {
                 Write-Log "Carpeta purgada: /$Folder" "INFO"
             }
             catch {
-                Write-Log "No se pudo eliminar la carpeta $Folder. Asegúrate de que Minecraft no esté abierto." "WARN"
+                Write-Log "No se pudo eliminar la carpeta $Folder. Asegúrate de que Minecraft não esté abierto." "WARN"
             }
         }
     }
@@ -658,8 +660,6 @@ function Invoke-FullInstallation {
     Write-Log "INICIANDO INSTALACIÓN COMPLETA DE BLACKSTICKX" "INFO"
     Write-Log "=========================================" "INFO"
     
-    # Preguntar por premium/no premium y localizar launcher antes de ejecutar todo
-    Check-And-LocateLaunchers
     $ChosenRam = Get-UserRamChoice
     
     Initialize-Environment
@@ -694,7 +694,6 @@ function Invoke-UpdateWorkflow {
     Write-Log "INICIANDO ACTUALIZACIÓN (SOLO MODS Y CONFIG)" "INFO"
     Write-Log "=========================================" "INFO"
     
-    Check-And-LocateLaunchers
     $ChosenRam = Get-UserRamChoice
     
     Initialize-Environment
@@ -763,8 +762,13 @@ function Invoke-Uninstallation {
 }
 
 # -----------------------------------------------------------------
-# INTERFAZ DE USUARIO EN CONSOLA
+# FLUJO PRINCIPAL Y MENÚ (EJECUTA LA PREGUNTA INICIAL PRIMERO)
 # -----------------------------------------------------------------
+
+# 1. Ejecutar la consulta del launcher antes de mostrar cualquier pantalla de instalación
+Check-InitialLauncherSetup
+
+# 2. Mostrar la interfaz de opciones del instalador una vez hecha la comprobación
 function Show-MainMenu {
     Clear-Host
     Write-Host "`n====================================================================" -ForegroundColor Cyan
