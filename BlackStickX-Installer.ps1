@@ -7,6 +7,10 @@
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
+# Prevenir errores de codificación en la consola (Caracteres extraños)
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 # -----------------------------------------------------------------
 # RUTAS GLOBALES Y CONFIGURACIÓN
 # -----------------------------------------------------------------
@@ -30,7 +34,7 @@ $UpdateFolders = @("mods", "config")
 $Downloads = @{
     "Config"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/config.zip";
     "Defaultconfigs" = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/defaultconfigs.zip";
-    "Forge"          = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/forge-1.20.1-47.4.22-installer.jar";
+    "Forge"          = "https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.22/forge-1.20.1-47.4.22-installer.jar";
     "Java18"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/jdk-18.0.2.1_windows-x64_bin.exe";
     "Java21"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/jdk-21.0.11_windows-x64_bin.exe";
     "KubeJS"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/kubejs.zip";
@@ -85,7 +89,7 @@ function Invoke-SecureDownload {
         [string]$DestinationPath,
         [string]$FileName
     )
-    Write-Log "Descargando $FileName (Modo de alta velocidad)..." "INFO"
+    Write-Log "Descargando $FileName..." "INFO"
     
     $WebClient = $null
     try {
@@ -163,7 +167,7 @@ function Get-UserRamChoice {
     $Options = @{}
     $Index = 1
 
-    Write-Host "  [$Index] 4 GB  <-- [MÍNIMO REQUERIDO]" -ForegroundColor Yellow
+    Write-Host "  [$Index] 4 GB  <-- [MINIMO REQUERIDO]" -ForegroundColor Yellow
     $Options.Add($Index.ToString(), 4)
     $Index++
 
@@ -198,7 +202,7 @@ function Get-UserRamChoice {
 }
 
 # -----------------------------------------------------------------
-# CONFIGURACIÓN DE PERFILES DE LAUNCHERS (PREMIUM Y NO-PREMIUM)
+# CONFIGURACIÓN DE PERFILES DE LAUNCHERS
 # -----------------------------------------------------------------
 function Configure-OfficialLauncherProfile {
     Param (
@@ -258,7 +262,6 @@ function Configure-OfficialLauncherProfile {
         $JsonObject | Add-Member -MemberType NoteProperty -Name "profiles" -Value ([PSCustomObject]@{})
     }
 
-    # Agregar o actualizar el perfil
     if ($JsonObject.profiles.psobject.Properties[$ProfileID]) {
         $JsonObject.profiles.$ProfileID = [PSCustomObject]$NewProfile
     } else {
@@ -502,38 +505,49 @@ function Ensure-Java18Environment {
     return $JavaPath
 }
 
-# -----------------------------------------------------------------
-# CONTROLADORES DE LIMPIEZA
-# -----------------------------------------------------------------
 function Get-ForgeInstallationStatus {
     $ExpectedJson = Join-Path $VersionsDir "$ForgeTargetID\$ForgeTargetID.json"
     if (Test-Path $ExpectedJson) {
-        Write-Log "Instalación de Forge detectada: $ForgeTargetID" "SUCCESS"
         return $true
     }
-    Write-Log "No se encontró el perfil de Forge ($ForgeTargetID)." "WARN"
     return $false
+}
+
+function Remove-ForgeVersionFolder {
+    $ForgeVersionFolder = Join-Path $VersionsDir $ForgeTargetID
+    if (Test-Path $ForgeVersionFolder) {
+        try {
+            Write-Log "Eliminando la versión de Forge existente ($ForgeTargetID)..." "INFO"
+            Remove-Item -Path $ForgeVersionFolder -Recurse -Force
+            Write-Log "Versión de Forge removida correctamente." "SUCCESS"
+        }
+        catch {
+            Write-Log "No se pudo borrar la carpeta $ForgeTargetID. Revisa si Minecraft está abierto." "WARN"
+        }
+    }
 }
 
 function Ensure-ForgeEnvironment {
     Param([string]$JavaExecutable)
     
+    Remove-ForgeVersionFolder
+
+    $LocalForgeJar = Join-Path $WorkDir "forge_installer.jar"
+    Write-Log "Iniciando descarga del instalador Forge $ForgeVersion..." "INFO"
+    Invoke-SecureDownload -Url $Downloads["Forge"] -DestinationPath $LocalForgeJar -FileName "Instalador de Forge"
+    
+    Write-Log "Ejecutando la instalación automatizada de Forge en MODO CLIENTE..." "INFO"
+
+    # --installClient instala el cliente en la carpeta objetivo (.minecraft) de forma silenciosa
+    $ArgumentList = "-jar `"$LocalForgeJar`" --installClient `"$MinecraftDir`""
+    $Process = Start-Process -FilePath $JavaExecutable -ArgumentList $ArgumentList -WorkingDirectory $WorkDir -PassThru -Wait -NoNewWindow
+
+    # Verificar si tras ejecutarse se creó la versión en /versions
     if (-not (Get-ForgeInstallationStatus)) {
-        Write-Log "Iniciando instalación de Forge $ForgeVersion..." "INFO"
-        $LocalForgeJar = Join-Path $WorkDir "forge_installer.jar"
-        Invoke-SecureDownload -Url $Downloads["Forge"] -DestinationPath $LocalForgeJar -FileName "Instalador de Forge"
-        
-        Write-Log "Ejecutando instalador de cliente Forge..." "INFO"
-        $ArgumentList = "-jar `"$LocalForgeJar`" --installClient"
-        
-        $Process = Start-Process -FilePath $JavaExecutable -ArgumentList $ArgumentList -WorkingDirectory $WorkDir -PassThru -Wait
-        
-        if (-not (Get-ForgeInstallationStatus)) {
-            Write-Log "Error en la instalación de Forge." "ERROR"
-            throw "Fallo en la instalación de Forge."
-        }
-        Write-Log "Forge fue instalado correctamente." "SUCCESS"
+        Write-Log "No se completó la instalación de Forge." "ERROR"
+        throw "La instalación de Forge Cliente falló o fue cancelada."
     }
+    Write-Log "Forge Cliente (1.20.1-47.4.22) se ha instalado y verificado correctamente en $VersionsDir\$ForgeTargetID." "SUCCESS"
 }
 
 function Clean-ModpackDirectories {
@@ -649,23 +663,14 @@ function Invoke-Uninstallation {
     Write-Log "INICIANDO DESINSTALACIÓN DE BLACKSTICKX" "INFO"
     Write-Log "=========================================" "INFO"
     
-    # 1. Purgar carpetas de datos del modpack (mods, config, etc.)
+    # 1. Purgar carpetas de datos del modpack
     Clean-ModpackDirectories
     
-    # 2. Eliminar las entradas en launcher_profiles.json y sklauncher/profiles.json
+    # 2. Eliminar entradas en launcher_profiles.json y sklauncher/profiles.json
     Remove-LauncherProfiles
     
-    # 3. Eliminar la carpeta de versión específica de Forge
-    $ForgeVersionFolder = Join-Path $VersionsDir $ForgeTargetID
-    if (Test-Path $ForgeVersionFolder) {
-        try {
-            Remove-Item -Path $ForgeVersionFolder -Recurse -Force
-            Write-Log "Versión de Forge removida: $ForgeTargetID" "SUCCESS"
-        }
-        catch {
-            Write-Log "No se pudo eliminar la carpeta de versión $ForgeTargetID. Verifica que Minecraft esté cerrado." "WARN"
-        }
-    }
+    # 3. Eliminar carpeta de versión específica de Forge
+    Remove-ForgeVersionFolder
 
     # 4. Eliminar el manifiesto de instalación
     $ManifestPath = Join-Path $MinecraftDir "manifest.json"
@@ -681,11 +686,6 @@ function Invoke-Uninstallation {
 # INTERFAZ DE USUARIO EN CONSOLA
 # -----------------------------------------------------------------
 function Show-MainMenu {
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-    
-    $Host.UI.RawUI.WindowSize = New-Object System.Management.Automation.Host.Size(85, 28)
-    $Host.UI.RawUI.BufferSize = New-Object System.Management.Automation.Host.Size(85, 100)
-    
     Clear-Host
     Write-Host "`n====================================================================" -ForegroundColor Cyan
     Write-Host "                   INSTALADOR BLACKSTICKX MODPACK                   " -ForegroundColor Cyan
@@ -718,7 +718,7 @@ do {
             "1" {
                 Invoke-FullInstallation
                 Write-Host "`n¡Instalación completada!" -ForegroundColor Green
-                Write-Host "El perfil 'BlackStickX Server' ha sido añadido a tu launcher_profiles.json con la RAM seleccionada." -ForegroundColor Green
+                Write-Host "El perfil 'BlackStickX Server' ha sido añadido a tu launcher con la RAM seleccionada." -ForegroundColor Green
                 Write-Host "Presiona cualquier tecla para volver al menú principal..." -ForegroundColor White
                 [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }
