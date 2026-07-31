@@ -26,7 +26,7 @@ $ModpackFolders = @("mods", "config", "defaultconfigs", "kubejs", "resourcepacks
 # Specific Targets for the Strict Update Subsystem (Only Mods & Config)
 $UpdateFolders = @("mods", "config")
 
-# Download URLs Manifest
+# Download URLs Manifest (Icono removido de aquí porque ahora es Base64 nativo)
 $Downloads = @{
     "Config"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/config.zip";
     "Defaultconfigs" = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/defaultconfigs.zip";
@@ -40,8 +40,7 @@ $Downloads = @{
     "ServersDat"     = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/servers.dat";
     "Shaderpacks"    = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/shaderpacks.zip";
     "SKLauncherJar"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18.jar";
-    "SKLauncherExe"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18_Setup.exe";
-    "ModpackIcon"    = "https://raw.githubusercontent.com/bast1waw/BlackStickX-Modpack/main/BlackStickX%20Logo%20Install%20Launcher%20128x128.png"
+    "SKLauncherExe"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18_Setup.exe"
 }
 
 # -----------------------------------------------------------------
@@ -207,33 +206,11 @@ function Configure-OfficialLauncherProfile {
     )
     Write-Log "Configuring official Minecraft Launcher profile for Premium users..." "INFO"
     
-    # Variables de respaldo locales
     $TargetForgeVersion = if ($script:ForgeTargetID) { $script:ForgeTargetID } else { "1.20.1-forge-47.4.22" }
     $ProfilesJsonPath   = if ($script:OfficialProfilesJson) { $script:OfficialProfilesJson } else { Join-Path $env:APPDATA ".minecraft\launcher_profiles.json" }
-    $WorkDirectory      = if ($script:WorkDir) { $script:WorkDir } else { Join-Path $env:TEMP "BlackStickX_Setup" }
 
-    $LocalLogoPath = Join-Path $WorkDirectory "modpack_logo.png"
-    $IconBase64 = "Furnace" # Respaldo por defecto
-
-    # Procesar descarga y codificación de la imagen 128x128 en Base64
-    try {
-        if ($Downloads.ContainsKey("ModpackIcon") -and $Downloads["ModpackIcon"]) {
-            Invoke-SecureDownload -Url $Downloads["ModpackIcon"] -DestinationPath $LocalLogoPath -FileName "Custom Modpack Logo (128x128)"
-            
-            if (Test-Path $LocalLogoPath) {
-                $Bytes = [System.IO.File]::ReadAllBytes($LocalLogoPath)
-                if ($Bytes.Length -gt 0) {
-                    $Base64String = [System.Convert]::ToBase64String($Bytes)
-                    $IconBase64 = "data:image/png;base64,$Base64String"
-                    Write-Log "Custom PNG logo (128x128) successfully encoded into Base64 format." "SUCCESS"
-                }
-            }
-        }
-    }
-    catch {
-        Write-Log "Could not process custom logo ($($_)). Falling back to default furnace icon." "WARN"
-        $IconBase64 = "Furnace"
-    }
+    # Logo 128x128 incrustado directamente en Base64
+    $IconBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAMnUlEQVR4nO2dC1QVxxnH/xcBSQRqFCMQVEDSJqk2SKFiGqOoaVNraxKssagnJCcnsac1SdPq0WhOW09jajRRT2xz0oj4rG+tMa1RtDWW1hqi+AYfhYgiKCi+BbyX6RnugPexO7vAvXt378zvnPFxd3Z39vu+ncc3M99CIpFIJBKJRCKRSCQiYQuSZ30CwA8BpALoBoCw5EkogOsASgGUA/gKQCWAowCuBPYRJO3hUQB/c1F4e9NlAHsBTAOQITVhDd71geLV0j8BPCm6gM3Mbj8q3zX9F0C26MI2E5EAPjdI+a7pCwBZogs/0EQAOBQA5bum3wWbUDuZoAx62ch6+1w6d+6M6OhohIWFNf+7JUVERCAsLByNjY0dKcMQACGsCQoKrDIMHAdgtVamefPmIjf3BYSHh8LhsLsdCwmxoakJuHSpFmfOVODYseMoLT2B48dLsGfP52iiB/UzEsA2fz2sxJ1oALd5VXNiYi9y8uQJ0l7OnTtHZs9+m3Tp0kVvU1AHoIvUkzH8laeMtLQB5Nq1K26qr6mpcvnfHU5yuJ1XW1tLZs6codcI1okg/ECTzVNCSEgIuXHjWqsCi4sPkP79+zX/np7+bXLq1AkdRtDoVW8UFX1BYmK66zGCUWKrx7/cw6paVQUUFGxvVVpDw20SG9vT7XhKSl/S0NCgYQROtm37lOzcefd6585VkKSkRC0DuAngwWBWQiD5OU/4M2e+yVRlb/7z9OkTivlqaqo5BtBE6uouk4yM9Nb8zz77DHE47rQaVXb2M1pGUAugh7hq8h9lakKnbzpVnhNnFX7yZKlXvtDQUFJdXckxAEKmTPm113n5+YvdmoSkpCQtI9hlVSGHmKAMSowFkKR2cPPmTWwEa28dydpsxCuf3W5HSUmJylWc55WXf+V1pKysnP3L0fznjh2aI75hAEbrfDZTYVYDeE3twODBjyMz8zH24t0lNja+2fnjyY0b17g3io6O8votMjLS5X8OpKR8A3PmzNYq80IA4VqZzIZZDSBB7cCsWb9l/3K4/EoQGRmNkSOf8sqflsaf3a2vv+31m7u3sKk5TZ06HRMmjOddqg+AHO7NTIgZDYD2/r1fZQBxcXEYOnS4whFHsxF89NGfkZk5sPmXqKgorFu3GvHxCR7G0oKzBunSxduf06mTq4fc1nr+ihUrER8fxyv7CM2nk2jSj+f04Tt4nBw+XEyuXr3sMkpoVM1/8GCx2z2ioqJIRcUZlXsQsmHDWl5n8AaAGKnijtFfTcDjx+fo8PC54uAonybnEPLIkUNk0qRXyOuvv0qqq89rGli3bt14RqA5YSXh80014U6a9LKGAXh79e4OFdXyexoNL79z6EkNhWMAP7OSfs3YB+isdmDHjp2w2xtUjpLW2e25c+dg3LjnXDqMYV6jBictk6F3dBbN2RfIyuKuDUnVeTGJCvE8p8umTetUagDnxM7kyb9wyz927FiW36HZbNjt9bqamOLiL3k1QJ5UbMdZpyZg6qp10uSlmLq6WsVzystPcdv1K1fqmq9LPYxZWUNJeXkZN39R0V6eASy2uvDNQCqvFrh8+aJCW01IVVWFYn7q63fHvU0fNWqkW37q+r19+5aCkTnvs3HjOp4BLBJdeb4ghDcT+OKLuQodNlqFN5DY2FjFc4YMGUyOHj2q2EVUyl9S0pLX2wDy8j7mGcB064vfHLzHqwU+/HBRS8vtNqRbsOA9nnLIiBEjSF7eYrJ/f1Fz/vnz5ynmO3TogKoBLFuWz7vHq6Irzlf05CmSpn37/uOhJGdHcPToH3HPa0kJCQmKv9tsNlJbe0HBAJxNRm7u87zrvhAc4jcH+TwFJicne/TanX6AhoZ6cv/9MbqMQLmWGM7taNqcU49qaaDoSvMlMWzTpqrAhw3LIjU1F10U1sg6hOfJmDHZ7TIA6hn0fvudTcyiRQt551by/BiS9jFIS2HR0ZFk+/bPPDqGTtasWUMGDBigW/lr16726Fu4exj79evHO/8PUsf+YaIe5c2YMd1lDWATcWX58qUkJyeHpKenK56bkZFBDh9uefNd5xAaW6+1ZMlirTIkB6PwzcJf9BhBnz69SUHBDhfV272GfWfPlPt2/9Otm7dQrZs2Ux2797lkd/7zV+/fo3WvfeKriB/Qx36RXqr8rfemkmuX7/uoXpvY3DHcxLIyapVK/Xc03KLQawIXb/1b71G0LVrVzJt2jRSWlqiYAgtHTvXdMfNSK5evUImTpyg514VoivGaLhOIqX09NOjSWFhoUYN4KS+/hbJz88ncXHKXkWF9D2rCtLKMYKeB7AAQNe2nJSamopBgwahb99kdOoUgvr6ejgcDthsNoSHR6CsrKx51XF19QW9l/wVgPfb9QSSDkMX6K1pa23gwzRFqtAcTABQZbDy5aSPybgPwDIDFP8/thFEYlLoeq2VdHm/H5T/AVu27mu8d6cIxnMA3gaQyyZTYn2wy6Y3ALoo8IwPFL/Xh6t972GhZn7Pwt7QvWsXAXwq4kQSnTgpUBD4TRbFcykTVDZvt5AGdOfHVAB7AFxrg9Lprt8/Afiuj541gY1azmvc91Ef3c8SzG+DQuoBnAbwJYBVAN5gbXF8Gx60O91bqnJ9B9uTSGujTBaapiPcx970GQC2aoW5cUmfGKm4QPsBKtuoQCVusTa/iKVy9qar8TGAlxSO2VkoOqV9ZDzuZcPRFAAPsfQt9ne3djzPaSODToQadSMV6n1wDaqAl1mi1AA4zmoKGhS6EMAlNpdwnrMJwMaudZ1zr0S2YJUq+zG2ITSOJV+xz4fX0iTQNQD1os0z4D43WafyKHsr+yjksbOYP+fZcarsvqwpoPvFH2G7lvwpM7oQNp0FxxCGPAPG7nqSI4D3Pcv2E/QyWulmmQugnbnvs7cuhlWvESYol7+gtc0KNgIqZM2WL5rDNmPWyaA45hyhnaE0tmM4kXUY4y06iUXf9INsvL/cLNW81QTZmY2naQ0xhnn9zOpFox3QYyzAdTl7070DEgUYq38ypgdbh5fIHDZprJduVBhXO1PuKTbSoPMExQBOMgMwPcHyzSBXerIx+APMIB5i+8YfVun966GJOXKqmIIPs7+PmfGtbgvBaABqUD/Ad5g7Nl0lD/XLn2AOqhPMKXOWhX65wd5yEvhHkXSEOZwhmXDBHcwaJs6f3ORcu71NhGUR0QAqOcd+bGA5JAEimdMEqMWVlQQZpzhrAO4VSdkiNgFg3wNUojsbNgqDqAbA+06wUN8CEtUAeCOBrxtYjoAjqgHs5xxTcxIFJaIaAM9PL5QvQFQDoO5dtZizvQ0uiyRAHFEZCt4SKeS7qDUAOIsv6caNwQaXJWCIbAC8juCTBpYjoIhsAHR5lhq+2g0kMTF0kchZlX7AcVEUJ3INQBdpqm0CoZ3ArxlcnoAgsgHw6CFKP0B0A9jBOeaPOACmQ3QDOMo51sg5FjSIbgDCB3YW3QBEWhWtiOgGIDyiG0CTCcoQUEQ3ADvnmN6vSVoa0Q2At/5PDgODHOoKHsd5RKEWh4rIeI3IHZU+iFUoMTEHdIRv2SoVGJz8pA0xfH4jurCCjYR2xBF+RHShBRO6vzsk4vqAYOftDoRzWyK68KxOpoaCL7GePy/PK6IL0arQ4dwFDeU+zvYEaNUEvgobLzGQ9RpK3eBSlFUaeWlAxwypPOswQUOhdR5u33AW5o13zh25ctga9NERAzhL4Un6sB1CvPNusbWDEhNzTEOJszhFH6yjP1Aa5DGNLc1KDeXRvYFajNNhBHtFCytjBV7S0ZHTuwtYj9v4kGiRRcxMig6F/aCN5Z+m45r75OyhOTiuoaj2Tu78UYcRFJngMzxCs1BDQWrRwfSyS4cRFLJPzEgMZqSOsfsDPijSVh1GcMTHH5KSaBDFNnrylPJTHwpR7duDrumCdBsbh9ZbuczHJaFrKf+hwwgccm2h/5msoYRKP3bMPtFhBCfNJKxgo78OBaT58ZnDWKgZrTLItQR+gAq/QkPwrxlQjnAds400PWW4hIKcpRoCN/QjzOybxLzyXGFOKokPeEJD2FUB2tmjFoa+JZ2WyvcNJRqCHhigcvVi3xzgle3dAJUtaMjREPAvA/ygWrUTacdchIRBI3pc5Ai2yCSCWqbDP5BognJaDi1373ATPVCxRlkLTFBGyzGXI9BtJnuYJB1NQcC9hFbbHj6Ac+wDA8uhB/pN4WyNfA+bo6jWIY/zNpn1Qw/vcMqcYILyWYoHWVwfT0EuNflDKM0ZvGmCclkSulr3XwCuAjgP4H2LhHt7A8BOAJ+xvQoSiUQikUgkEolEYjQA/g9MWbQdZhZN8wAAAABJRU5ErkJggg=="
     
     $JvmArgs = "-Xmx${SelectedRamGB}G -XX:+UnlockExperimentalVMOptions -XX:+UseG1GC -XX:G1NewSizePercent=20 -XX:G1ReservePercent=20 -XX:MaxGCPauseMillis=50 -XX:G1HeapRegionSize=32M"
     $ProfileID = "bb546bf4fb01335bc30f527b680f100b"
@@ -249,45 +226,56 @@ function Configure-OfficialLauncherProfile {
         "type"          = "custom"
     }
 
-    $ProfilesDict = [ordered]@{}
-    $FileVersion = 6
-
-    # Lectura y parsing seguro del JSON
+    $JsonObject = $null
     if (Test-Path $ProfilesJsonPath) {
         try {
             $RawText = [System.IO.File]::ReadAllText($ProfilesJsonPath)
             if (-not [string]::IsNullOrWhiteSpace($RawText)) {
-                $Parsed = $RawText | ConvertFrom-Json
-                if ($null -ne $Parsed -and $null -ne $Parsed.version) { $FileVersion = $Parsed.version }
-                
-                if ($null -ne $Parsed -and $null -ne $Parsed.profiles) {
-                    $Props = Get-Member -InputObject $Parsed.profiles -MemberType NoteProperty
-                    foreach ($prop in $Props) {
-                        $pName = $prop.Name
-                        $ProfilesDict[$pName] = $Parsed.profiles.$pName
-                    }
-                }
+                $JsonObject = $RawText | ConvertFrom-Json
             }
         }
         catch {
-            Write-Log "Failed to parse launcher_profiles.json. Rebuilding new structure." "WARN"
+            Write-Log "Could not parse existing launcher_profiles.json, creating clean structure." "WARN"
         }
     }
 
-    if ($ProfilesDict.Contains($ProfileID) -and $null -ne $ProfilesDict[$ProfileID].created) {
-        $NewProfile["created"] = $ProfilesDict[$ProfileID].created
+    if ($null -eq $JsonObject) {
+        $JsonObject = [PSCustomObject]@{
+            profiles = [PSCustomObject]@{}
+            settings = [PSCustomObject]@{
+                crashAssistance  = $false
+                enableAdvanced   = $false
+                enableAnalytics  = $true
+                enableHistorical = $false
+                enableReleases   = $true
+                enableSnapshots  = $false
+                keepLauncherOpen = $true
+                profileSorting   = "ByLastPlayed"
+                showGameLog      = $false
+                showMenu         = $false
+                soundOn          = $false
+            }
+            version  = 6
+        }
     }
 
-    $ProfilesDict[$ProfileID] = $NewProfile
+    if ($null -eq $JsonObject.profiles) {
+        $JsonObject | Add-Member -MemberType NoteProperty -Name "profiles" -Value ([PSCustomObject]@{})
+    }
 
-    $FinalStructure = [ordered]@{
-        "profiles" = $ProfilesDict
-        "version"  = $FileVersion
+    if ($JsonObject.profiles.psobject.Properties[$ProfileID] -and $JsonObject.profiles.$ProfileID.created) {
+        $NewProfile["created"] = $JsonObject.profiles.$ProfileID.created
+    }
+
+    if ($JsonObject.profiles.psobject.Properties[$ProfileID]) {
+        $JsonObject.profiles.$ProfileID = [PSCustomObject]$NewProfile
+    } else {
+        $JsonObject.profiles | Add-Member -MemberType NoteProperty -Name $ProfileID -Value ([PSCustomObject]$NewProfile)
     }
 
     try {
         $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-        $JsonString = ConvertTo-Json $FinalStructure -Depth 30
+        $JsonString = ConvertTo-Json $JsonObject -Depth 10
         
         $ParentDir = Split-Path $ProfilesJsonPath -Parent
         if (-not (Test-Path $ParentDir)) { New-Item -ItemType Directory -Path $ParentDir | Out-Null }
@@ -366,7 +354,6 @@ function Configure-SKLauncherProfile {
 function Remove-LauncherProfiles {
     Write-Log "Removing BlackStickX profile registrations from launchers..." "INFO"
     
-    # 1. Official Launcher
     $ProfileID = "bb546bf4fb01335bc30f527b680f100b"
     if (Test-Path $OfficialProfilesJson) {
         try {
@@ -383,13 +370,9 @@ function Remove-LauncherProfiles {
                         }
                     }
                     
-                    $FinalStructure = [ordered]@{
-                        "profiles" = $ProfilesDict
-                        "version"  = if ($null -ne $Parsed.version) { $Parsed.version } else { 6 }
-                    }
-                    
+                    $Parsed.profiles = $ProfilesDict
                     $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-                    $JsonString = ConvertTo-Json $FinalStructure -Depth 30
+                    $JsonString = ConvertTo-Json $Parsed -Depth 30
                     [System.IO.File]::WriteAllText($OfficialProfilesJson, $JsonString, $Utf8NoBom)
                     Write-Log "Removed BlackStickX profile from Official Launcher." "SUCCESS"
                 }
@@ -400,7 +383,6 @@ function Remove-LauncherProfiles {
         }
     }
 
-    # 2. SKLauncher
     $TargetProfileId = "profile-blackstickx-modpack"
     if (Test-Path $SKProfilesJson) {
         try {
