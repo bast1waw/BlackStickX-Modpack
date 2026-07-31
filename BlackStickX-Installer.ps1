@@ -157,19 +157,19 @@ function Get-UserRamChoice {
     Write-Host "====================================================================" -ForegroundColor Cyan
     Write-Host "                CONFIGURACIÓN DE MEMORIA RAM (JVM)                  " -ForegroundColor Cyan
     Write-Host "====================================================================" -ForegroundColor Cyan
-    Write-Host "  Tu PC cuenta con un total de: $TotalRamGB GB de RAM." -ForegroundColor Gray
-    Write-Host "  Selecciona cuánta memoria deseas asignar a BlackStickX:" -ForegroundColor White
+    Write-Host "   Tu PC cuenta con un total de: $TotalRamGB GB de RAM." -ForegroundColor Gray
+    Write-Host "   Selecciona cuánta memoria deseas asignar a BlackStickX:" -ForegroundColor White
     Write-Host "--------------------------------------------------------------------" -ForegroundColor Cyan
     
     $Options = @{}
     $Index = 1
 
-    Write-Host "  [$Index] 4 GB  <-- [MÍNIMO REQUERIDO]" -ForegroundColor Yellow
+    Write-Host "   [$Index] 4 GB  <-- [MÍNIMO REQUERIDO]" -ForegroundColor Yellow
     $Options.Add($Index.ToString(), 4)
     $Index++
 
     if ($RecommendedRam -gt 4 -and $RecommendedRam -le $MaxSafeRam) {
-        Write-Host "  [$Index] $RecommendedRam GB  <-- [RECOMENDADO PARA TU PC]" -ForegroundColor Green
+        Write-Host "   [$Index] $RecommendedRam GB  <-- [RECOMENDADO PARA TU PC]" -ForegroundColor Green
         $Options.Add($Index.ToString(), $RecommendedRam)
         $Index++
     }
@@ -177,7 +177,7 @@ function Get-UserRamChoice {
     $PossibleGbs = @(6, 8, 12, 16, 24, 32)
     foreach ($gb in $PossibleGbs) {
         if ($gb -le $MaxSafeRam -and $gb -ne 4 -and $gb -ne $RecommendedRam) {
-            Write-Host "  [$Index] $gb GB" -ForegroundColor White
+            Write-Host "   [$Index] $gb GB" -ForegroundColor White
             $Options.Add($Index.ToString(), $gb)
             $Index++
         }
@@ -187,9 +187,9 @@ function Get-UserRamChoice {
 
     $Selection = ""
     while (-not $Options.ContainsKey($Selection)) {
-        $Selection = Read-Host "  Selecciona una opción de asignación [1-$($Index-1)]"
+        $Selection = Read-Host "   Selecciona una opción de asignación [1-$($Index-1)]"
         if (-not $Options.ContainsKey($Selection)) {
-            Write-Host "  Opción inválida. Inténtalo de nuevo." -ForegroundColor Red
+            Write-Host "   Opción inválida. Inténtalo de nuevo." -ForegroundColor Red
         }
     }
 
@@ -199,7 +199,7 @@ function Get-UserRamChoice {
 }
 
 # -----------------------------------------------------------------
-# LAUNCHER PROFILE CONFIGURATORS (PREMIUM & NO-PREMIUM)
+# LAUNCHER PROFILE CONFIGURATORS & CLEANERS (PREMIUM & NO-PREMIUM)
 # -----------------------------------------------------------------
 function Configure-OfficialLauncherProfile {
     Param (
@@ -208,7 +208,7 @@ function Configure-OfficialLauncherProfile {
     Write-Log "Configuring official Minecraft Launcher profile for Premium users..." "INFO"
     
     $LocalLogoPath = Join-Path $WorkDir "modpack_logo.png"
-    $IconBase64 = "Furnace" # Respaldo por defecto
+    $IconBase64 = "Furnace"
 
     try {
         Invoke-SecureDownload -Url $Downloads["ModpackIcon"] -DestinationPath $LocalLogoPath -FileName "Custom Modpack Logo"
@@ -270,6 +270,30 @@ function Configure-OfficialLauncherProfile {
     Write-Log "Created new launcher_profiles.json template with custom icon." "SUCCESS"
 }
 
+function Remove-OfficialLauncherProfile {
+    $ProfileID = "bb546bf4fb01335bc30f527b680f100b"
+    if (Test-Path $OfficialProfilesJson) {
+        try {
+            $Content = Get-Content $OfficialProfilesJson -Raw | ConvertFrom-Json
+            if ($null -ne $Content -and $null -ne $Content.profiles) {
+                $ProfilesHashtable = [ordered]@{}
+                foreach ($prop in $Content.profiles.psobject.properties) {
+                    if ($prop.Name -ne $ProfileID) {
+                        $ProfilesHashtable[$prop.Name] = $prop.Value
+                    }
+                }
+                $Content.profiles = [PSCustomObject]$ProfilesHashtable
+                $JsonOutput = ConvertTo-Json $Content -Depth 100
+                [IO.File]::WriteAllText($OfficialProfilesJson, $JsonOutput, [System.Text.Encoding]::UTF8)
+                Write-Log "BlackStickX profile removed from launcher_profiles.json successfully." "SUCCESS"
+            }
+        }
+        catch {
+            Write-Log "Could not clean profile from launcher_profiles.json: $_" "WARN"
+        }
+    }
+}
+
 function Configure-SKLauncherProfile {
     Write-Log "Configuring custom SKLauncher profile subsystem..." "INFO"
     
@@ -311,6 +335,27 @@ function Configure-SKLauncherProfile {
     $JsonOutput = ConvertTo-Json $ProfilesStructure -Depth 10
     [IO.File]::WriteAllText($SKProfilesJson, $JsonOutput, [System.Text.Encoding]::UTF8)
     Write-Log "Profile 'BlackStickX' created successfully in SKLauncher." "SUCCESS"
+}
+
+function Remove-SKLauncherProfile {
+    if (Test-Path $SKProfilesJson) {
+        try {
+            $ExistingJson = Get-Content $SKProfilesJson -Raw | ConvertFrom-Json -ErrorAction SilentlyContinue
+            if ($ExistingJson -and $ExistingJson.profiles) {
+                $FilteredProfiles = @()
+                foreach ($p in $ExistingJson.profiles) {
+                    if ($p.id -ne "profile-blackstickx-modpack") { $FilteredProfiles += $p }
+                }
+                $ProfilesStructure = @{"profiles" = $FilteredProfiles}
+                $JsonOutput = ConvertTo-Json $ProfilesStructure -Depth 10
+                [IO.File]::WriteAllText($SKProfilesJson, $JsonOutput, [System.Text.Encoding]::UTF8)
+                Write-Log "BlackStickX profile removed from SKLauncher successfully." "SUCCESS"
+            }
+        }
+        catch {
+            Write-Log "Could not clean profile from SKLauncher profiles.json: $_" "WARN"
+        }
+    }
 }
 
 function Deploy-SKLauncher {
@@ -468,7 +513,6 @@ function Invoke-FullInstallation {
     Write-Log "STARTING BLACKSTICKX FULL MODPACK INSTALLATION" "INFO"
     Write-Log "=========================================" "INFO"
     
-    # Selector interactivo de RAM según la PC del usuario
     $ChosenRam = Get-UserRamChoice
     
     Initialize-Environment
@@ -503,7 +547,6 @@ function Invoke-UpdateWorkflow {
     Write-Log "STARTING BLACKSTICKX STICKY UPDATE (MODS & CONFIG ONLY)" "INFO"
     Write-Log "=========================================" "INFO"
     
-    # Permite reajustar la RAM en cada actualización si el usuario lo desea
     $ChosenRam = Get-UserRamChoice
     
     Initialize-Environment
@@ -562,8 +605,12 @@ function Invoke-Uninstallation {
     
     $ManifestPath = Join-Path $MinecraftDir "manifest.json"
     if (Test-Path $ManifestPath) { Remove-Item $ManifestPath -Force }
+
+    # Eliminar perfiles de los Launchers automáticamente
+    Remove-OfficialLauncherProfile
+    Remove-SKLauncherProfile
     
-    Write-Log "BlackStickX Modpack structural definitions cleanly removed." "SUCCESS"
+    Write-Log "BlackStickX Modpack structural definitions and launcher profiles cleanly removed." "SUCCESS"
 }
 
 # -----------------------------------------------------------------
@@ -577,22 +624,22 @@ function Show-MainMenu {
     
     Clear-Host
     Write-Host "`n====================================================================" -ForegroundColor Cyan
-    Write-Host "                   BLACKSTICKX MODPACK INSTALLER                    " -ForegroundColor Cyan
+    Write-Host "                    BLACKSTICKX MODPACK INSTALLER                   " -ForegroundColor Cyan
     Write-Host "====================================================================" -ForegroundColor Cyan
-    Write-Host "  Versión del Modpack: 1.20.1 | Forge: $ForgeVersion" -ForegroundColor Gray
-    Write-Host "  Destino: $MinecraftDir" -ForegroundColor Gray
+    Write-Host "   Versión del Modpack: 1.20.1 | Forge: $ForgeVersion" -ForegroundColor Gray
+    Write-Host "   Destino: $MinecraftDir" -ForegroundColor Gray
     Write-Host "--------------------------------------------------------------------" -ForegroundColor Cyan
-    Write-Host "  [1] Instalar (Instalación limpia completa + Auto Perfiles)" -ForegroundColor White
+    Write-Host "   [1] Instalar (Instalación limpia completa + Auto Perfiles)" -ForegroundColor White
     Write-Host ""
-    Write-Host "  [2] Actualizar (Solo Mods y Config, mantiene todo lo demás)" -ForegroundColor White
+    Write-Host "   [2] Actualizar (Solo Mods y Config, mantiene todo lo demás)" -ForegroundColor White
     Write-Host ""
-    Write-Host "  [3] Reparar (Borrado total y reinstalación limpia completa)" -ForegroundColor White
+    Write-Host "   [3] Reparar (Borrado total y reinstalación limpia completa)" -ForegroundColor White
     Write-Host ""
-    Write-Host "  [4] Desinstalar (Elimina el modpack de forma segura)" -ForegroundColor White
+    Write-Host "   [4] Desinstalar (Elimina el modpack y sus perfiles de forma segura)" -ForegroundColor White
     Write-Host ""
-    Write-Host "  [5] Abrir Carpeta .minecraft" -ForegroundColor White
+    Write-Host "   [5] Abrir Carpeta .minecraft" -ForegroundColor White
     Write-Host ""
-    Write-Host "  [6] Salir" -ForegroundColor White
+    Write-Host "   [6] Salir" -ForegroundColor White
     Write-Host "====================================================================" -ForegroundColor Cyan
     Write-Host ""
 }
@@ -600,7 +647,7 @@ function Show-MainMenu {
 # Main Application Entry Execution Loop
 do {
     Show-MainMenu
-    $Choice = Read-Host "  Seleccione una opción de gestión [1-6]"
+    $Choice = Read-Host "   Seleccione una opción de gestión [1-6]"
     
     try {
         switch ($Choice) {
@@ -624,7 +671,7 @@ do {
             }
             "4" {
                 Invoke-Uninstallation
-                Write-Host "`nModpack desinstalado exitosamente. Presione cualquier tecla para continuar..." -ForegroundColor Green
+                Write-Host "`nModpack y perfiles desinstalados exitosamente. Presione cualquier tecla para continuar..." -ForegroundColor Green
                 [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }
             "5" {
