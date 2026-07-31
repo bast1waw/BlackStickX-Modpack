@@ -106,6 +106,9 @@ function Invoke-SecureDownload {
     }
 }
 
+# -----------------------------------------------------------------
+# EXTRACT ARCHIVE PIPELINE
+# -----------------------------------------------------------------
 function Safe-ExtractArchive {
     Param (
         [string]$ZipPath,
@@ -140,7 +143,6 @@ function Configure-SKLauncherProfile {
         New-Item -ItemType Directory -Path $SKLauncherDir | Out-Null
     }
 
-    # Definición del nuevo objeto de perfil optimizado con Forge y 4GB de RAM
     $NewProfile = [ordered]@{
         "id" = "profile-blackstickx-modpack"
         "name" = "BlackStickX"
@@ -158,7 +160,6 @@ function Configure-SKLauncherProfile {
         try {
             $ExistingJson = Get-Content $ProfilesJson -Raw | ConvertFrom-Json -ErrorAction SilentlyContinue
             if ($ExistingJson -and $ExistingJson.profiles) {
-                # Filtrar si ya existía para no duplicarlo
                 $FilteredProfiles = @()
                 foreach ($p in $ExistingJson.profiles) {
                     if ($p.id -ne "profile-blackstickx-modpack") { $FilteredProfiles += $p }
@@ -355,7 +356,6 @@ function Invoke-FullInstallation {
     $ManifestPath = Join-Path $MinecraftDir "manifest.json"
     Invoke-SecureDownload -Url $Downloads["Manifest"] -DestinationPath $ManifestPath -FileName "Modpack Architecture Manifest"
 
-    # Automatización y despliegue del launcher no premium
     Configure-SKLauncherProfile
     Deploy-SKLauncher
 
@@ -369,7 +369,6 @@ function Invoke-UpdateWorkflow {
     
     Initialize-Environment
     
-    # Purgar quirúrgicamente solo Mods y Config
     foreach ($Folder in $UpdateFolders) {
         $TargetPath = Join-Path $MinecraftDir $Folder
         if (Test-Path $TargetPath) {
@@ -383,7 +382,6 @@ function Invoke-UpdateWorkflow {
         }
     }
     
-    # Descargar e extraer en subcarpetas dedicadas
     $Packages = @("Mods", "Config")
     foreach ($Pkg in $Packages) {
         $ZipDest = Join-Path $WorkDir "$Pkg.zip"
@@ -396,7 +394,6 @@ function Invoke-UpdateWorkflow {
     $ManifestPath = Join-Path $MinecraftDir "manifest.json"
     Invoke-SecureDownload -Url $Downloads["Manifest"] -DestinationPath $ManifestPath -FileName "Updating Manifest References"
     
-    # Reforzar perfil en caso de actualización
     Configure-SKLauncherProfile
 
     Write-Log "Surgical update workflow for Mods and Config executed correctly." "SUCCESS"
@@ -404,38 +401,18 @@ function Invoke-UpdateWorkflow {
 
 function Invoke-RepairWorkflow {
     Write-Log "=========================================" "INFO"
-    Write-Log "STARTING BLACKSTICKX STRUCTURAL SYSTEM REPAIR" "INFO"
+    Write-Log "STARTING BLACKSTICKX COMPLETE RE-INSTALLATION REPAIR" "INFO"
     Write-Log "=========================================" "INFO"
     
-    Initialize-Environment
-    $JavaPath = Ensure-Java18Environment
-    Ensure-ForgeEnvironment -JavaExecutable $JavaPath
+    # Paso 1: Ejecutar la desinstalación completa (Mismo comportamiento que la opción 4)
+    Write-Log "Step 1: Purging all existing modpack folders and definitions..." "WARN"
+    Invoke-Uninstallation
+    
+    # Paso 2: Ejecutar la instalación desde cero limpia
+    Write-Log "Step 2: Launching fresh software stack deployment..." "INFO"
+    Invoke-FullInstallation
 
-    $Packages = @("Mods", "Config", "Defaultconfigs", "KubeJS", "Resourcepacks", "Shaderpacks")
-    foreach ($Pkg in $Packages) {
-        $LocalFolderPath = Join-Path $MinecraftDir ($Pkg.ToLower())
-        if (-not (Test-Path $LocalFolderPath) -or (Get-ChildItem $LocalFolderPath -ErrorAction SilentlyContinue).Count -eq 0) {
-            Write-Log "Missing or degraded directory components verified at: /$Pkg. Correcting structural properties..." "WARN"
-            if (Test-Path $LocalFolderPath) { Remove-Item -Path $LocalFolderPath -Recurse -Force | Out-Null }
-            
-            $ZipDest = Join-Path $WorkDir "$Pkg.zip"
-            Invoke-SecureDownload -Url $Downloads[$Pkg] -DestinationPath $ZipDest -FileName "$Pkg Restoration Archive"
-            Safe-ExtractArchive -ZipPath $ZipDest -ExtractLocation $LocalFolderPath
-        } else {
-            Write-Log "Directory integrity validation passed for structural node: /$Pkg" "SUCCESS"
-        }
-    }
-
-    $ServerDatPath = Join-Path $MinecraftDir "servers.dat"
-    if (-not (Test-Path $ServerDatPath)) {
-        Invoke-SecureDownload -Url $Downloads["ServersDat"] -DestinationPath $ServerDatPath -FileName "Restoring Server Profiles"
-    }
-
-    # Reparar también el entorno del launcher si falta
-    Configure-SKLauncherProfile
-    Deploy-SKLauncher
-
-    Write-Log "Repair routine complete. System environment state stable." "SUCCESS"
+    Write-Log "Deep structural repair completed. All assets wiped and cleanly re-downloaded." "SUCCESS"
 }
 
 function Invoke-Uninstallation {
@@ -471,7 +448,7 @@ function Show-MainMenu {
     Write-Host ""
     Write-Host "  [2] Actualizar (Solo Mods y Config, mantiene todo lo demás)" -ForegroundColor White
     Write-Host ""
-    Write-Host "  [3] Reparar (Verifica y descarga componentes faltantes)" -ForegroundColor White
+    Write-Host "  [3] Reparar (Borrado total y reinstalación limpia completa)" -ForegroundColor White
     Write-Host ""
     Write-Host "  [4] Desinstalar (Elimina el modpack de forma segura)" -ForegroundColor White
     Write-Host ""
@@ -503,7 +480,9 @@ do {
             }
             "3" {
                 Invoke-RepairWorkflow
-                Write-Host "`nAnálisis y corrección de datos completado. Presione cualquier tecla para continuar..." -ForegroundColor Green
+                Write-Host "`n¡Reparación profunda finalizada con éxito!" -ForegroundColor Green
+                Write-Host "Todos los datos corruptos fueron borrados y reinstalados limpiamente." -ForegroundColor Green
+                Write-Host "Presione cualquier tecla para continuar..." -ForegroundColor White
                 [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }
             "4" {
