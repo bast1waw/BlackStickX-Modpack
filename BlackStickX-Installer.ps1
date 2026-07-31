@@ -10,15 +10,15 @@ $ErrorActionPreference = "Stop"
 # -----------------------------------------------------------------
 # GLOBAL PATHS & CONFIGURATION
 # -----------------------------------------------------------------
-$MinecraftDir       = Join-Path $env:APPDATA ".minecraft"
+$MinecraftDir         = Join-Path $env:APPDATA ".minecraft"
 $OfficialProfilesJson = Join-Path $MinecraftDir "launcher_profiles.json"
-$SKLauncherDir      = Join-Path $env:APPDATA "sklauncher"
-$SKProfilesJson     = Join-Path $SKLauncherDir "profiles.json"
-$VersionsDir        = Join-Path $MinecraftDir "versions"
-$ForgeVersion       = "1.20.1-47.4.22"
-$ForgeTargetID      = "1.20.1-forge-47.4.22"
-$LogPath            = Join-Path $env:TEMP "BlackStickXInstaller.log"
-$WorkDir            = Join-Path $env:TEMP "BlackStickX_Setup"
+$SKLauncherDir        = Join-Path $env:APPDATA "sklauncher"
+$SKProfilesJson       = Join-Path $SKLauncherDir "profiles.json"
+$VersionsDir          = Join-Path $MinecraftDir "versions"
+$ForgeVersion         = "1.20.1-47.4.22"
+$ForgeTargetID        = "1.20.1-forge-47.4.22"
+$LogPath              = Join-Path $env:TEMP "BlackStickXInstaller.log"
+$WorkDir              = Join-Path $env:TEMP "BlackStickX_Setup"
 
 # Core Modpack Directories to Manage
 $ModpackFolders = @("mods", "config", "defaultconfigs", "kubejs", "resourcepacks", "shaderpacks")
@@ -28,19 +28,20 @@ $UpdateFolders = @("mods", "config")
 
 # Download URLs Manifest
 $Downloads = @{
-    "Config"        = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/config.zip";
-    "Defaultconfigs"= "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/defaultconfigs.zip";
-    "Forge"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/forge-1.20.1-47.4.22-installer.jar";
-    "Java18"        = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/jdk-18.0.2.1_windows-x64_bin.exe";
-    "Java21"        = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/jdk-21.0.11_windows-x64_bin.exe";
-    "KubeJS"        = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/kubejs.zip";
-    "Manifest"      = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/manifest.json";
-    "Mods"          = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/mods.zip";
-    "Resourcepacks" = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/resourcepacks.zip";
-    "ServersDat"    = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/servers.dat";
-    "Shaderpacks"   = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/shaderpacks.zip";
-    "SKLauncherJar" = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18.jar";
-    "SKLauncherExe" = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18_Setup.exe"
+    "Config"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/config.zip";
+    "Defaultconfigs" = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/defaultconfigs.zip";
+    "Forge"          = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/forge-1.20.1-47.4.22-installer.jar";
+    "Java18"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/jdk-18.0.2.1_windows-x64_bin.exe";
+    "Java21"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/jdk-21.0.11_windows-x64_bin.exe";
+    "KubeJS"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/kubejs.zip";
+    "Manifest"       = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/manifest.json";
+    "Mods"           = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/mods.zip";
+    "Resourcepacks"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/resourcepacks.zip";
+    "ServersDat"     = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/servers.dat";
+    "Shaderpacks"    = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/shaderpacks.zip";
+    "SKLauncherJar"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18.jar";
+    "SKLauncherExe"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18_Setup.exe";
+    "ModpackIcon"    = "https://raw.githubusercontent.com/bast1waw/BlackStickX-Modpack/main/ModPack%20ICON.png"
 }
 
 # -----------------------------------------------------------------
@@ -132,49 +133,141 @@ function Safe-ExtractArchive {
 }
 
 # -----------------------------------------------------------------
+# DYNAMIC RAM MANAGEMENT SUBSYSTEM
+# -----------------------------------------------------------------
+function Get-UserRamChoice {
+    Write-Log "Detectando la memoria RAM física del sistema..." "INFO"
+    
+    $TotalPhysicalMemory = (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
+    $TotalRamGB = [Math]::Round($TotalPhysicalMemory / 1GB)
+    
+    Write-Log "RAM Total Detectada: $TotalRamGB GB" "SUCCESS"
+
+    $MaxSafeRam = [Math]::Floor($TotalRamGB * 0.75)
+    if ($MaxSafeRam -lt 4) { $MaxSafeRam = 4 }
+
+    $RecommendedRam = 4
+    if ($TotalRamGB -ge 16) {
+        $RecommendedRam = 8
+    } elseif ($TotalRamGB -ge 12) {
+        $RecommendedRam = 6
+    }
+
+    Clear-Host
+    Write-Host "====================================================================" -ForegroundColor Cyan
+    Write-Host "                CONFIGURACIÓN DE MEMORIA RAM (JVM)                  " -ForegroundColor Cyan
+    Write-Host "====================================================================" -ForegroundColor Cyan
+    Write-Host "  Tu PC cuenta con un total de: $TotalRamGB GB de RAM." -ForegroundColor Gray
+    Write-Host "  Selecciona cuánta memoria deseas asignar a BlackStickX:" -ForegroundColor White
+    Write-Host "--------------------------------------------------------------------" -ForegroundColor Cyan
+    
+    $Options = @{}
+    $Index = 1
+
+    Write-Host "  [$Index] 4 GB  <-- [MÍNIMO REQUERIDO]" -ForegroundColor Yellow
+    $Options.Add($Index.ToString(), 4)
+    $Index++
+
+    if ($RecommendedRam -gt 4 -and $RecommendedRam -le $MaxSafeRam) {
+        Write-Host "  [$Index] $RecommendedRam GB  <-- [RECOMENDADO PARA TU PC]" -ForegroundColor Green
+        $Options.Add($Index.ToString(), $RecommendedRam)
+        $Index++
+    }
+
+    $PossibleGbs = @(6, 8, 12, 16, 24, 32)
+    foreach ($gb in $PossibleGbs) {
+        if ($gb -le $MaxSafeRam -and $gb -ne 4 -and $gb -ne $RecommendedRam) {
+            Write-Host "  [$Index] $gb GB" -ForegroundColor White
+            $Options.Add($Index.ToString(), $gb)
+            $Index++
+        }
+    }
+    Write-Host "====================================================================" -ForegroundColor Cyan
+    Write-Host ""
+
+    $Selection = ""
+    while (-not $Options.ContainsKey($Selection)) {
+        $Selection = Read-Host "  Selecciona una opción de asignación [1-$($Index-1)]"
+        if (-not $Options.ContainsKey($Selection)) {
+            Write-Host "  Opción inválida. Inténtalo de nuevo." -ForegroundColor Red
+        }
+    }
+
+    $SelectedRam = $Options[$Selection]
+    Write-Log "El usuario seleccionó asignar $SelectedRam GB de RAM al cliente." "SUCCESS"
+    return $SelectedRam
+}
+
+# -----------------------------------------------------------------
 # LAUNCHER PROFILE CONFIGURATORS (PREMIUM & NO-PREMIUM)
 # -----------------------------------------------------------------
 function Configure-OfficialLauncherProfile {
+    Param (
+        [int]$SelectedRamGB = 4
+    )
     Write-Log "Configuring official Minecraft Launcher profile for Premium users..." "INFO"
     
-    # Argumentos JVM optimizados solicitados, forzando 4G de RAM
-    $JvmArgs = "-Xmx4G -XX:+UnlockExperimentalVMOptions -XX:+UseG1GC -XX:G1NewSizePercent=20 -XX:G1ReservePercent=20 -XX:MaxGCPauseMillis=50 -XX:G1HeapRegionSize=32M"
+    $LocalLogoPath = Join-Path $WorkDir "modpack_logo.png"
+    $IconBase64 = "Furnace" # Respaldo por defecto
+
+    try {
+        Invoke-SecureDownload -Url $Downloads["ModpackIcon"] -DestinationPath $LocalLogoPath -FileName "Custom Modpack Logo"
+        
+        if (Test-Path $LocalLogoPath) {
+            $Bytes = [IO.File]::ReadAllBytes($LocalLogoPath)
+            $Base64String = [Convert]::ToBase64String($Bytes)
+            $IconBase64 = "data:image/png;base64,$Base64String"
+            Write-Log "Custom PNG logo successfully encoded into Base64 format." "SUCCESS"
+        }
+    }
+    catch {
+        Write-Log "Could not process custom logo. Falling back to default furnace icon." "WARN"
+    }
     
+    $JvmArgs = "-Xmx${SelectedRamGB}G -XX:+UnlockExperimentalVMOptions -XX:+UseG1GC -XX:G1NewSizePercent=20 -XX:G1ReservePercent=20 -XX:MaxGCPauseMillis=50 -XX:G1HeapRegionSize=32M"
+    $ProfileID = "bb546bf4fb01335bc30f527b680f100b"
+    $Timestamp = (Get-Date -ToUniversalTime).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+
     $NewProfile = @{
-        "name" = "BlackStickX"
-        "type" = "custom"
-        "versionId" = $ForgeTargetID
-        "javaArgs" = $JvmArgs
-        "icon" = "Furnace"
+        "created"       = $Timestamp
+        "icon"          = $IconBase64
+        "javaArgs"      = $JvmArgs
+        "lastUsed"      = "1970-01-01T00:00:00.000Z"
+        "lastVersionId" = $ForgeTargetID
+        "name"          = "BlackStickX"
+        "type"          = "custom"
     }
 
     if (Test-Path $OfficialProfilesJson) {
         try {
             $Content = Get-Content $OfficialProfilesJson -Raw | ConvertFrom-Json
             if ($null -ne $Content -and $null -ne $Content.profiles) {
-                # Agregar o actualizar el perfil en la estructura existente
-                $Content.profiles | Add-Member -MemberType NoteProperty -Name "BlackStickX" -Value $NewProfile -Force
+                if ($null -ne $Content.profiles.$ProfileID) {
+                    $NewProfile["created"] = $Content.profiles.$ProfileID.created
+                }
+                
+                $Content.profiles | Add-Member -MemberType NoteProperty -Name $ProfileID -Value $NewProfile -Force
                 
                 $JsonOutput = ConvertTo-Json $Content -Depth 100
                 [IO.File]::WriteAllText($OfficialProfilesJson, $JsonOutput, [System.Text.Encoding]::UTF8)
-                Write-Log "Successfully added/updated 'BlackStickX' profile in Official Launcher." "SUCCESS"
+                Write-Log "Successfully added/updated 'BlackStickX' profile with custom icon in Official Launcher." "SUCCESS"
                 return
             }
         }
         catch {
-            Write-Log "Failed to parse launcher_profiles.json. It might be locked or corrupt." "WARN"
+            Write-Log "Failed to parse launcher_profiles.json. Re-building template." "WARN"
         }
     }
 
-    # Si el archivo no existe o falló la edición interna, creamos una plantilla limpia base
     $BaseStructure = @{
         "profiles" = @{
-            "BlackStickX" = $NewProfile
+            $ProfileID = $NewProfile
         }
+        "version" = 6
     }
     $JsonOutput = ConvertTo-Json $BaseStructure -Depth 100
     [IO.File]::WriteAllText($OfficialProfilesJson, $JsonOutput, [System.Text.Encoding]::UTF8)
-    Write-Log "Created new standalone launcher_profiles.json template with 'BlackStickX'." "SUCCESS"
+    Write-Log "Created new launcher_profiles.json template with custom icon." "SUCCESS"
 }
 
 function Configure-SKLauncherProfile {
@@ -217,7 +310,7 @@ function Configure-SKLauncherProfile {
 
     $JsonOutput = ConvertTo-Json $ProfilesStructure -Depth 10
     [IO.File]::WriteAllText($SKProfilesJson, $JsonOutput, [System.Text.Encoding]::UTF8)
-    Write-Log "Profile 'BlackStickX' created successfully in SKLauncher with 4GB RAM allocated." "SUCCESS"
+    Write-Log "Profile 'BlackStickX' created successfully in SKLauncher." "SUCCESS"
 }
 
 function Deploy-SKLauncher {
@@ -304,7 +397,7 @@ function Ensure-Java18Environment {
         $LocalJavaExe = Join-Path $WorkDir "jdk18_installer.exe"
         Invoke-SecureDownload -Url $Downloads["Java18"] -DestinationPath $LocalJavaExe -FileName "Java 18 Installer"
         
-        Write-Log "Executing Java 18 installer setup silently. Please authorize prompts if requested..." "INFO"
+        Write-Log "Executing Java 18 installer setup silently..." "INFO"
         $Process = Start-Process -FilePath $LocalJavaExe -ArgumentList "/s" -PassThru -Wait
         
         $JavaPath = Get-Java18Binary
@@ -343,10 +436,10 @@ function Ensure-ForgeEnvironment {
         $Process = Start-Process -FilePath $JavaExecutable -ArgumentList $ArgumentList -WorkingDirectory $WorkDir -PassThru -Wait
         
         if (-not (Get-ForgeInstallationStatus)) {
-            Write-Log "Forge binary installation failed or client profile was rejected by modpack layout standards." "ERROR"
+            Write-Log "Forge binary installation failed." "ERROR"
             throw "Forge Framework Installation Failure."
         }
-        Write-Log "Forge system core runtime has been successfully bound to launcher parameters." "SUCCESS"
+        Write-Log "Forge system core runtime has been successfully bound." "SUCCESS"
     }
 }
 
@@ -360,11 +453,11 @@ function Clean-ModpackDirectories {
                 Write-Log "Purged active directory block: /$Folder" "INFO"
             }
             catch {
-                Write-Log "Unable to drop folder structural configuration at $Folder. Ensure Minecraft is not active." "WARN"
+                Write-Log "Unable to drop folder structure at $Folder. Ensure Minecraft is not active." "WARN"
             }
         }
     }
-    Write-Log "Target clean phase complete. Guarded content properties protected safely." "SUCCESS"
+    Write-Log "Target clean phase complete." "SUCCESS"
 }
 
 # -----------------------------------------------------------------
@@ -375,12 +468,14 @@ function Invoke-FullInstallation {
     Write-Log "STARTING BLACKSTICKX FULL MODPACK INSTALLATION" "INFO"
     Write-Log "=========================================" "INFO"
     
+    # Selector interactivo de RAM según la PC del usuario
+    $ChosenRam = Get-UserRamChoice
+    
     Initialize-Environment
     $JavaPath = Ensure-Java18Environment
     Ensure-ForgeEnvironment -JavaExecutable $JavaPath
     Clean-ModpackDirectories
 
-    # Package Delivery Execution Pipeline
     $Packages = @("Mods", "Config", "Defaultconfigs", "KubeJS", "Resourcepacks", "Shaderpacks")
     foreach ($Pkg in $Packages) {
         $ZipDest = Join-Path $WorkDir "$Pkg.zip"
@@ -390,15 +485,13 @@ function Invoke-FullInstallation {
         Safe-ExtractArchive -ZipPath $ZipDest -ExtractLocation $TargetFolder
     }
 
-    # Meta Assets Configuration Integration
     $ServerDatPath = Join-Path $MinecraftDir "servers.dat"
     Invoke-SecureDownload -Url $Downloads["ServersDat"] -DestinationPath $ServerDatPath -FileName "Global Multi-Server Profiles"
 
     $ManifestPath = Join-Path $MinecraftDir "manifest.json"
     Invoke-SecureDownload -Url $Downloads["Manifest"] -DestinationPath $ManifestPath -FileName "Modpack Architecture Manifest"
 
-    # Automatización de perfiles en ambos entornos
-    Configure-OfficialLauncherProfile
+    Configure-OfficialLauncherProfile -SelectedRamGB $ChosenRam
     Configure-SKLauncherProfile
     Deploy-SKLauncher
 
@@ -409,6 +502,9 @@ function Invoke-UpdateWorkflow {
     Write-Log "=========================================" "INFO"
     Write-Log "STARTING BLACKSTICKX STICKY UPDATE (MODS & CONFIG ONLY)" "INFO"
     Write-Log "=========================================" "INFO"
+    
+    # Permite reajustar la RAM en cada actualización si el usuario lo desea
+    $ChosenRam = Get-UserRamChoice
     
     Initialize-Environment
     
@@ -437,8 +533,7 @@ function Invoke-UpdateWorkflow {
     $ManifestPath = Join-Path $MinecraftDir "manifest.json"
     Invoke-SecureDownload -Url $Downloads["Manifest"] -DestinationPath $ManifestPath -FileName "Updating Manifest References"
     
-    # Reforzar inyección de configuraciones en launchers
-    Configure-OfficialLauncherProfile
+    Configure-OfficialLauncherProfile -SelectedRamGB $ChosenRam
     Configure-SKLauncherProfile
 
     Write-Log "Surgical update workflow for Mods and Config executed correctly." "SUCCESS"
@@ -468,7 +563,7 @@ function Invoke-Uninstallation {
     $ManifestPath = Join-Path $MinecraftDir "manifest.json"
     if (Test-Path $ManifestPath) { Remove-Item $ManifestPath -Force }
     
-    Write-Log "BlackStickX Modpack structural definitions cleanly removed. User profiles and metadata preserved." "SUCCESS"
+    Write-Log "BlackStickX Modpack structural definitions cleanly removed." "SUCCESS"
 }
 
 # -----------------------------------------------------------------
@@ -512,20 +607,18 @@ do {
             "1" {
                 Invoke-FullInstallation
                 Write-Host "`n¡Instalación lista!" -ForegroundColor Green
-                Write-Host "El perfil 'BlackStickX' ha sido creado en el Launcher Oficial con 4GB de RAM." -ForegroundColor Green
-                Write-Host "Además, tienes SKLauncher en tu Escritorio por si no eres premium." -ForegroundColor Green
+                Write-Host "El perfil 'BlackStickX' ha sido configurado con tu selección de RAM y tu icono personalizado." -ForegroundColor Green
                 Write-Host "Presione cualquier tecla para volver al menú principal..." -ForegroundColor White
                 [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }
             "2" {
                 Invoke-UpdateWorkflow
-                Write-Host "`nActualización del sistema completada. Presione cualquier tecla para continuar..." -ForegroundColor Green
+                Write-Host "`n¡Actualización del sistema completada! Presione cualquier tecla para continuar..." -ForegroundColor Green
                 [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }
             "3" {
                 Invoke-RepairWorkflow
                 Write-Host "`n¡Reparación profunda finalizada con éxito!" -ForegroundColor Green
-                Write-Host "Todos los datos corruptos fueron borrados y reinstalados limpiamente." -ForegroundColor Green
                 Write-Host "Presione cualquier tecla para continuar..." -ForegroundColor White
                 [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }
