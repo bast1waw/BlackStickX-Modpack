@@ -7,6 +7,10 @@
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
+# Prevenir errores de codificación en la consola (Caracteres extraños)
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 # -----------------------------------------------------------------
 # RUTAS GLOBALES Y CONFIGURACIÓN
 # -----------------------------------------------------------------
@@ -163,7 +167,7 @@ function Get-UserRamChoice {
     $Options = @{}
     $Index = 1
 
-    Write-Host "  [$Index] 4 GB  <-- [MÍNIMO REQUERIDO]" -ForegroundColor Yellow
+    Write-Host "  [$Index] 4 GB  <-- [MINIMO REQUERIDO]" -ForegroundColor Yellow
     $Options.Add($Index.ToString(), 4)
     $Index++
 
@@ -513,7 +517,7 @@ function Remove-ForgeVersionFolder {
     $ForgeVersionFolder = Join-Path $VersionsDir $ForgeTargetID
     if (Test-Path $ForgeVersionFolder) {
         try {
-            Write-Log "Eliminando la versión de Forge existente ($ForgeTargetID) para reinstalación limpia..." "INFO"
+            Write-Log "Eliminando la versión de Forge existente ($ForgeTargetID)..." "INFO"
             Remove-Item -Path $ForgeVersionFolder -Recurse -Force
             Write-Log "Versión de Forge removida correctamente." "SUCCESS"
         }
@@ -526,26 +530,24 @@ function Remove-ForgeVersionFolder {
 function Ensure-ForgeEnvironment {
     Param([string]$JavaExecutable)
     
-    # 1. Purgar la versión previa de Forge en la carpeta /versions para forzar la instalación limpia de cliente
     Remove-ForgeVersionFolder
 
-    # 2. Proceder con la instalación estricta como Cliente
-    Write-Log "Iniciando instalación de cliente Forge $ForgeVersion..." "INFO"
+    Write-Log "Iniciando descarga del instalador Forge $ForgeVersion..." "INFO"
     $LocalForgeJar = Join-Path $WorkDir "forge_installer.jar"
     Invoke-SecureDownload -Url $Downloads["Forge"] -DestinationPath $LocalForgeJar -FileName "Instalador de Forge"
     
-    Write-Log "Ejecutando el instalador de Forge (Modo Cliente)..." "INFO"
-    
-    # Se añade la ruta base explícita a .minecraft para asegurar la ruta de instalación de cliente
-    $ArgumentList = "-jar `"$LocalForgeJar`" --installClient `"$MinecraftDir`""
-    
-    $Process = Start-Process -FilePath $JavaExecutable -ArgumentList $ArgumentList -WorkingDirectory $WorkDir -PassThru -Wait
-    
+    Write-Log "Abriendo la ventana de instalación de Forge..." "INFO"
+    Write-Log "--> En la ventana que se abra, asegúrate de presionar 'OK' (Install Client)." "WARN"
+
+    # Se ejecuta Java abriendo la interfaz gráfica oficial del instalador de Forge
+    $Process = Start-Process -FilePath $JavaExecutable -ArgumentList "-jar `"$LocalForgeJar`"" -WorkingDirectory $WorkDir -PassThru -Wait
+
+    # Verificar si tras cerrar el instalador se creó la carpeta en versions
     if (-not (Get-ForgeInstallationStatus)) {
-        Write-Log "Error en la instalación de Forge como Cliente." "ERROR"
-        throw "Fallo en la instalación de Forge."
+        Write-Log "No se completó la instalación de Forge." "ERROR"
+        throw "La instalación de Forge fue cancelada o falló."
     }
-    Write-Log "Forge Cliente fue instalado correctamente en $VersionsDir\$ForgeTargetID." "SUCCESS"
+    Write-Log "Forge Cliente se ha verificado correctamente en $VersionsDir\$ForgeTargetID." "SUCCESS"
 }
 
 function Clean-ModpackDirectories {
@@ -684,11 +686,6 @@ function Invoke-Uninstallation {
 # INTERFAZ DE USUARIO EN CONSOLA
 # -----------------------------------------------------------------
 function Show-MainMenu {
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-    
-    $Host.UI.RawUI.WindowSize = New-Object System.Management.Automation.Host.Size(85, 28)
-    $Host.UI.RawUI.BufferSize = New-Object System.Management.Automation.Host.Size(85, 100)
-    
     Clear-Host
     Write-Host "`n====================================================================" -ForegroundColor Cyan
     Write-Host "                   INSTALADOR BLACKSTICKX MODPACK                   " -ForegroundColor Cyan
