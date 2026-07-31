@@ -72,7 +72,7 @@ function Write-Log {
 }
 
 # -----------------------------------------------------------------
-# FUNCIONES PRINCIPALES DE UTILIDAD Y DETECCIÓN PREVIA MEJORADA
+# FUNCIONES PRINCIPALES DE UTILIDAD Y DETECCIÓN PREVIA ESTRICTA
 # -----------------------------------------------------------------
 function Initialize-Environment {
     Write-Log "Inicializando directorios de trabajo..." "INFO"
@@ -171,7 +171,6 @@ function Check-InitialLauncherSetup {
             }
         }
 
-        # Verificación mediante comandos de registro o comandos UWP si las rutas directas fallan
         if (-not $FoundOfficial) {
             try {
                 $uwpCheck = Get-AppxPackage -Name *Microsoft.MinecraftUWP* -ErrorAction SilentlyContinue
@@ -184,8 +183,7 @@ function Check-InitialLauncherSetup {
         }
 
         if (-not $FoundOfficial) {
-            Write-Host "  [!] No se detectó el Minecraft original en las rutas comunes." -ForegroundColor Yellow
-            Write-Host "  Por favor, asegúrate de tenerlo instalado para usar el perfil oficial." -ForegroundColor Yellow
+            Write-Host "  [!] No se detectó el Minecraft original. Asegúrate de instalarlo." -ForegroundColor Yellow
             Write-Log "Minecraft Original indicado pero no hallado físicamente." "WARN"
         }
     } 
@@ -210,10 +208,13 @@ function Check-InitialLauncherSetup {
             }
         }
 
+        # Si tras buscar estrictamente no existe por ningún lado, se ejecuta el instalador y se espera
         if (-not $FoundSK) {
-            Write-Host "  SKLauncher no encontrado. Procediendo a descargarlo e instalarlo..." -ForegroundColor Yellow
-            Write-Log "SKLauncher no fue hallado. Iniciando instalación..." "WARN"
+            Write-Host "  SKLauncher no encontrado en el sistema. Procediendo a descargarlo e instalarlo..." -ForegroundColor Yellow
+            Write-Log "SKLauncher no fue hallado físicamente. Iniciando despliegue..." "WARN"
             Deploy-SKLauncherAndWait
+        } else {
+            Write-Host "  SKLauncher detectado correctamente." -ForegroundColor Green
         }
     }
 
@@ -228,32 +229,47 @@ function Deploy-SKLauncherAndWait {
     try {
         Invoke-SecureDownload -Url $Downloads["SKLauncherExe"] -DestinationPath $InstallerDest -FileName "Instalador de SKLauncher"
         
-        Write-Host "  [i] Se abrirá el instalador de SKLauncher. Por favor, completa la instalación." -ForegroundColor Yellow
-        Write-Host "  [i] Este script esperará automáticamente a que SKLauncher esté presente en el sistema..." -ForegroundColor Cyan
-        Write-Log "Ejecutando instalador de SKLauncher y esperando a que finalice..." "INFO"
+        Write-Host "  [i] Se abrirá el instalador de SKLauncher. Por favor, instálalo." -ForegroundColor Yellow
+        Write-Host "  [i] Este script se pausará y esperará automáticamente hasta que detecte SKLauncher..." -ForegroundColor Cyan
+        Write-Log "Ejecutando instalador de SKLauncher de forma interactiva..." "INFO"
         
-        # Ejecutar el instalador de forma interactiva para que el usuario pueda avanzar la ventana
+        # Abre el instalador por encima del código para que el usuario pueda hacer clic
         Start-Process -FilePath $InstallerDest -Wait
 
-        # Bucle de comprobación inteligente hasta que detecte que ya se instaló en AppData o Escritorio
+        # Bucle de comprobación estricta hasta que el usuario finalice la instalación real
         $DesktopPath = [Environment]::GetFolderPath("Desktop")
-        $TimeoutSeconds = 300 # 5 minutos máximo de espera
+        $TimeoutSeconds = 600 # 10 minutos de margen máximo
         $Elapsed = 0
 
         while ($Elapsed -lt $TimeoutSeconds) {
-            if ((Test-Path "$env:APPDATA\sklauncher") -or (Test-Path "$DesktopPath\SKlauncher.exe") -or (Test-Path "$env:LOCALAPPDATA\Programs\sklauncher")) {
-                Write-Host "  ¡SKLauncher detectado con éxito en el sistema!" -ForegroundColor Green
-                Write-Log "SKLauncher detectado e instalado correctamente tras la espera." "SUCCESS"
+            $CheckAgainPaths = @(
+                "$env:APPDATA\sklauncher\SKlauncher.exe",
+                "$DesktopPath\SKlauncher.exe",
+                "$env:LOCALAPPDATA\Programs\sklauncher\SKlauncher.exe"
+            )
+            
+            $DetectedNow = $false
+            foreach ($p in $CheckAgainPaths) {
+                if (Test-Path $p) {
+                    $DetectedNow = $true
+                    break
+                }
+            }
+
+            if ($DetectedNow) {
+                Write-Host "  ¡SKLauncher detectado e instalado con éxito!" -ForegroundColor Green
+                Write-Log "SKLauncher detectado satisfactoriamente tras el proceso de instalación." "SUCCESS"
                 return
             }
-            Start-Sleep -Seconds 3
-            $Elapsed += 3
+
+            Start-Sleep -Seconds 4
+            $Elapsed += 4
         }
         
-        Write-Log "No se pudo confirmar la instalación automática de SKLauncher tras el tiempo límite." "WARN"
+        Write-Log "Tiempo de espera agotado para SKLauncher." "WARN"
     }
     catch {
-        Write-Log "Error al desplegar SKLauncher: $_" "ERROR"
+        Write-Log "Error al gestionar la instalación de SKLauncher: $_" "ERROR"
     }
 }
 
