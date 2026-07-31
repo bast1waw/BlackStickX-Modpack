@@ -385,27 +385,36 @@ function Show-MainMenu {
     # Forzar a la consola a procesar caracteres en UTF-8 nativo
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     
+    # Ajustar dinámicamente las dimensiones físicas de la ventana para dar más espacio visual
+    $Host.UI.RawUI.WindowSize = New-Object System.Management.Automation.Host.Size(85, 28)
+    $Host.UI.RawUI.BufferSize = New-Object System.Management.Automation.Host.Size(85, 100)
+    
     Clear-Host
-    Write-Host "================================================================" -ForegroundColor Cyan
-    Write-Host "                 BLACKSTICKX MODPACK INSTALLER                  " -ForegroundColor Cyan
-    Write-Host "================================================================" -ForegroundColor Cyan
-    Write-Host " Versión del Modpack: 1.20.1 | Forge: $ForgeVersion" -ForegroundColor Gray
-    Write-Host " Destino: $MinecraftDir" -ForegroundColor Gray
-    Write-Host "----------------------------------------------------------------" -ForegroundColor Cyan
-    Write-Host " [1] Instalar (Instalación limpia completa)" -ForegroundColor White
-    Write-Host " [2] Actualizar (Solo Mods y Config, mantiene todo lo demás)" -ForegroundColor White
-    Write-Host " [3] Reparar (Verifica y descarga componentes faltantes)" -ForegroundColor White
-    Write-Host " [4] Desinstalar (Elimina el modpack de forma segura)" -ForegroundColor White
-    Write-Host " [5] Abrir Carpeta .minecraft" -ForegroundColor White
-    Write-Host " [6] Salir" -ForegroundColor White
-    Write-Host "================================================================" -ForegroundColor Cyan
+    Write-Host "`n====================================================================" -ForegroundColor Cyan
+    Write-Host "                   BLACKSTICKX MODPACK INSTALLER                    " -ForegroundColor Cyan
+    Write-Host "====================================================================" -ForegroundColor Cyan
+    Write-Host "  Versión del Modpack: 1.20.1 | Forge: $ForgeVersion" -ForegroundColor Gray
+    Write-Host "  Destino: $MinecraftDir" -ForegroundColor Gray
+    Write-Host "--------------------------------------------------------------------" -ForegroundColor Cyan
+    Write-Host "  [1] Instalar (Instalación limpia completa)" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  [2] Actualizar (Solo Mods y Config, mantiene todo lo demás)" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  [3] Reparar (Verifica y descarga componentes faltantes)" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  [4] Desinstalar (Elimina el modpack de forma segura)" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  [5] Abrir Carpeta .minecraft" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  [6] Salir" -ForegroundColor White
+    Write-Host "====================================================================" -ForegroundColor Cyan
     Write-Host ""
 }
 
 # Main Application Entry Execution Loop
 do {
     Show-MainMenu
-    $Choice = Read-Host "Seleccione una opción de gestión [1-6]"
+    $Choice = Read-Host "  Seleccione una opción de gestión [1-6]"
     
     try {
         switch ($Choice) {
