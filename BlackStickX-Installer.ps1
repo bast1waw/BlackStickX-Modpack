@@ -157,19 +157,19 @@ function Get-UserRamChoice {
     Write-Host "====================================================================" -ForegroundColor Cyan
     Write-Host "                CONFIGURACIÓN DE MEMORIA RAM (JVM)                  " -ForegroundColor Cyan
     Write-Host "====================================================================" -ForegroundColor Cyan
-    Write-Host "   Tu PC cuenta con un total de: $TotalRamGB GB de RAM." -ForegroundColor Gray
-    Write-Host "   Selecciona cuánta memoria deseas asignar a BlackStickX:" -ForegroundColor White
+    Write-Host "  Tu PC cuenta con un total de: $TotalRamGB GB de RAM." -ForegroundColor Gray
+    Write-Host "  Selecciona cuánta memoria deseas asignar a BlackStickX:" -ForegroundColor White
     Write-Host "--------------------------------------------------------------------" -ForegroundColor Cyan
     
     $Options = @{}
     $Index = 1
 
-    Write-Host "   [$Index] 4 GB  <-- [MÍNIMO REQUERIDO]" -ForegroundColor Yellow
+    Write-Host "  [$Index] 4 GB  <-- [MÍNIMO REQUERIDO]" -ForegroundColor Yellow
     $Options.Add($Index.ToString(), 4)
     $Index++
 
     if ($RecommendedRam -gt 4 -and $RecommendedRam -le $MaxSafeRam) {
-        Write-Host "   [$Index] $RecommendedRam GB  <-- [RECOMENDADO PARA TU PC]" -ForegroundColor Green
+        Write-Host "  [$Index] $RecommendedRam GB  <-- [RECOMENDADO PARA TU PC]" -ForegroundColor Green
         $Options.Add($Index.ToString(), $RecommendedRam)
         $Index++
     }
@@ -177,7 +177,7 @@ function Get-UserRamChoice {
     $PossibleGbs = @(6, 8, 12, 16, 24, 32)
     foreach ($gb in $PossibleGbs) {
         if ($gb -le $MaxSafeRam -and $gb -ne 4 -and $gb -ne $RecommendedRam) {
-            Write-Host "   [$Index] $gb GB" -ForegroundColor White
+            Write-Host "  [$Index] $gb GB" -ForegroundColor White
             $Options.Add($Index.ToString(), $gb)
             $Index++
         }
@@ -187,9 +187,9 @@ function Get-UserRamChoice {
 
     $Selection = ""
     while (-not $Options.ContainsKey($Selection)) {
-        $Selection = Read-Host "   Selecciona una opción de asignación [1-$($Index-1)]"
+        $Selection = Read-Host "  Selecciona una opción de asignación [1-$($Index-1)]"
         if (-not $Options.ContainsKey($Selection)) {
-            Write-Host "   Opción inválida. Inténtalo de nuevo." -ForegroundColor Red
+            Write-Host "  Opción inválida. Inténtalo de nuevo." -ForegroundColor Red
         }
     }
 
@@ -199,7 +199,7 @@ function Get-UserRamChoice {
 }
 
 # -----------------------------------------------------------------
-# LAUNCHER PROFILE CONFIGURATORS & CLEANERS (PREMIUM & NO-PREMIUM)
+# LAUNCHER PROFILE CONFIGURATORS (PREMIUM & NO-PREMIUM)
 # -----------------------------------------------------------------
 function Configure-OfficialLauncherProfile {
     Param (
@@ -208,7 +208,7 @@ function Configure-OfficialLauncherProfile {
     Write-Log "Configuring official Minecraft Launcher profile for Premium users..." "INFO"
     
     $LocalLogoPath = Join-Path $WorkDir "modpack_logo.png"
-    $IconBase64 = "Furnace"
+    $IconBase64 = "Furnace" # Respaldo por defecto
 
     try {
         Invoke-SecureDownload -Url $Downloads["ModpackIcon"] -DestinationPath $LocalLogoPath -FileName "Custom Modpack Logo"
@@ -228,7 +228,7 @@ function Configure-OfficialLauncherProfile {
     $ProfileID = "bb546bf4fb01335bc30f527b680f100b"
     $Timestamp = (Get-Date -ToUniversalTime).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
 
-    $NewProfile = @{
+    $NewProfileData = [ordered]@{
         "created"       = $Timestamp
         "icon"          = $IconBase64
         "javaArgs"      = $JvmArgs
@@ -238,122 +238,150 @@ function Configure-OfficialLauncherProfile {
         "type"          = "custom"
     }
 
+    $JsonContent = $null
+
     if (Test-Path $OfficialProfilesJson) {
         try {
-            $Content = Get-Content $OfficialProfilesJson -Raw | ConvertFrom-Json
-            if ($null -ne $Content -and $null -ne $Content.profiles) {
-                if ($null -ne $Content.profiles.$ProfileID) {
-                    $NewProfile["created"] = $Content.profiles.$ProfileID.created
-                }
-                
-                $Content.profiles | Add-Member -MemberType NoteProperty -Name $ProfileID -Value $NewProfile -Force
-                
-                $JsonOutput = ConvertTo-Json $Content -Depth 100
-                [IO.File]::WriteAllText($OfficialProfilesJson, $JsonOutput, [System.Text.Encoding]::UTF8)
-                Write-Log "Successfully added/updated 'BlackStickX' profile with custom icon in Official Launcher." "SUCCESS"
-                return
+            $RawText = [System.IO.File]::ReadAllText($OfficialProfilesJson)
+            if (-not [string]::IsNullOrWhiteSpace($RawText)) {
+                $JsonContent = $RawText | ConvertFrom-Json
             }
         }
         catch {
-            Write-Log "Failed to parse launcher_profiles.json. Re-building template." "WARN"
+            Write-Log "Failed to parse launcher_profiles.json. A new base profile file will be generated." "WARN"
         }
     }
 
-    $BaseStructure = @{
-        "profiles" = @{
-            $ProfileID = $NewProfile
+    if ($null -eq $JsonContent) {
+        $JsonContent = [PSCustomObject]@{
+            "profiles" = [PSCustomObject]@{}
+            "version"  = 6
         }
-        "version" = 6
     }
-    $JsonOutput = ConvertTo-Json $BaseStructure -Depth 100
-    [IO.File]::WriteAllText($OfficialProfilesJson, $JsonOutput, [System.Text.Encoding]::UTF8)
-    Write-Log "Created new launcher_profiles.json template with custom icon." "SUCCESS"
-}
 
-function Remove-OfficialLauncherProfile {
-    $ProfileID = "bb546bf4fb01335bc30f527b680f100b"
-    if (Test-Path $OfficialProfilesJson) {
-        try {
-            $Content = Get-Content $OfficialProfilesJson -Raw | ConvertFrom-Json
-            if ($null -ne $Content -and $null -ne $Content.profiles) {
-                $ProfilesHashtable = [ordered]@{}
-                foreach ($prop in $Content.profiles.psobject.properties) {
-                    if ($prop.Name -ne $ProfileID) {
-                        $ProfilesHashtable[$prop.Name] = $prop.Value
-                    }
-                }
-                $Content.profiles = [PSCustomObject]$ProfilesHashtable
-                $JsonOutput = ConvertTo-Json $Content -Depth 100
-                [IO.File]::WriteAllText($OfficialProfilesJson, $JsonOutput, [System.Text.Encoding]::UTF8)
-                Write-Log "BlackStickX profile removed from launcher_profiles.json successfully." "SUCCESS"
-            }
-        }
-        catch {
-            Write-Log "Could not clean profile from launcher_profiles.json: $_" "WARN"
-        }
+    if ($null -eq $JsonContent.profiles) {
+        $JsonContent | Add-Member -MemberType NoteProperty -Name "profiles" -Value ([PSCustomObject]@{}) -Force
     }
+
+    if ($null -ne $JsonContent.profiles.$ProfileID -and $null -ne $JsonContent.profiles.$ProfileID.created) {
+        $NewProfileData["created"] = $JsonContent.profiles.$ProfileID.created
+    }
+
+    $JsonContent.profiles | Add-Member -MemberType NoteProperty -Name $ProfileID -Value ([PSCustomObject]$NewProfileData) -Force
+
+    $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    $JsonString = ConvertTo-Json $JsonContent -Depth 30
+    [System.IO.File]::WriteAllText($OfficialProfilesJson, $JsonString, $Utf8NoBom)
+
+    Write-Log "Successfully updated 'BlackStickX' profile in Official Launcher." "SUCCESS"
 }
 
 function Configure-SKLauncherProfile {
+    Param (
+        [int]$SelectedRamGB = 4
+    )
     Write-Log "Configuring custom SKLauncher profile subsystem..." "INFO"
     
     if (-not (Test-Path $SKLauncherDir)) {
         New-Item -ItemType Directory -Path $SKLauncherDir | Out-Null
     }
 
+    $RamInMB = [int]($SelectedRamGB * 1024)
+    $TargetProfileId = "profile-blackstickx-modpack"
+    
     $NewProfile = [ordered]@{
-        "id" = "profile-blackstickx-modpack"
-        "name" = "BlackStickX"
-        "version" = $ForgeTargetID
-        "maxRam" = 4096
+        "id"               = $TargetProfileId
+        "name"             = "BlackStickX"
+        "version"          = $ForgeTargetID
+        "maxRam"           = $RamInMB
         "customResolution" = $false
-        "resolutionWidth" = 854
+        "resolutionWidth"  = 854
         "resolutionHeight" = 480
-        "visibility" = "CLOSE_LAUNCHER"
+        "visibility"       = "CLOSE_LAUNCHER"
     }
 
-    $ProfilesStructure = @{"profiles" = @($NewProfile)}
+    $ExistingProfiles = @()
 
     if (Test-Path $SKProfilesJson) {
         try {
-            $ExistingJson = Get-Content $SKProfilesJson -Raw | ConvertFrom-Json -ErrorAction SilentlyContinue
-            if ($ExistingJson -and $ExistingJson.profiles) {
-                $FilteredProfiles = @()
-                foreach ($p in $ExistingJson.profiles) {
-                    if ($p.id -ne "profile-blackstickx-modpack") { $FilteredProfiles += $p }
+            $RawText = [System.IO.File]::ReadAllText($SKProfilesJson)
+            if (-not [string]::IsNullOrWhiteSpace($RawText)) {
+                $ParsedJson = $RawText | ConvertFrom-Json
+                if ($null -ne $ParsedJson.profiles) {
+                    foreach ($p in $ParsedJson.profiles) {
+                        if ($p.id -ne $TargetProfileId) {
+                            $ExistingProfiles += $p
+                        }
+                    }
                 }
-                $FilteredProfiles += New-Object PSObject -Property $NewProfile
-                $ProfilesStructure = @{"profiles" = $FilteredProfiles}
-                Write-Log "Merged custom profile into existing profiles.json structure." "INFO"
             }
         }
         catch {
-            Write-Log "Existing profiles.json was corrupted. Re-building fresh template." "WARN"
+            Write-Log "Existing SKLauncher profiles.json was unreadable or corrupted. Resetting profile structure." "WARN"
         }
     }
 
+    $ExistingProfiles += [PSCustomObject]$NewProfile
+
+    $ProfilesStructure = [PSCustomObject]@{
+        "profiles" = [array]$ExistingProfiles
+    }
+
+    $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     $JsonOutput = ConvertTo-Json $ProfilesStructure -Depth 10
-    [IO.File]::WriteAllText($SKProfilesJson, $JsonOutput, [System.Text.Encoding]::UTF8)
-    Write-Log "Profile 'BlackStickX' created successfully in SKLauncher." "SUCCESS"
+    [System.IO.File]::WriteAllText($SKProfilesJson, $JsonOutput, $Utf8NoBom)
+
+    Write-Log "Profile 'BlackStickX' synchronized successfully in SKLauncher with ${SelectedRamGB}GB RAM." "SUCCESS"
 }
 
-function Remove-SKLauncherProfile {
-    if (Test-Path $SKProfilesJson) {
+function Remove-LauncherProfiles {
+    Write-Log "Removing BlackStickX profile registrations from launchers..." "INFO"
+    
+    # 1. Official Launcher
+    $ProfileID = "bb546bf4fb01335bc30f527b680f100b"
+    if (Test-Path $OfficialProfilesJson) {
         try {
-            $ExistingJson = Get-Content $SKProfilesJson -Raw | ConvertFrom-Json -ErrorAction SilentlyContinue
-            if ($ExistingJson -and $ExistingJson.profiles) {
-                $FilteredProfiles = @()
-                foreach ($p in $ExistingJson.profiles) {
-                    if ($p.id -ne "profile-blackstickx-modpack") { $FilteredProfiles += $p }
+            $RawText = [System.IO.File]::ReadAllText($OfficialProfilesJson)
+            if (-not [string]::IsNullOrWhiteSpace($RawText)) {
+                $JsonContent = $RawText | ConvertFrom-Json
+                if ($null -ne $JsonContent.profiles -and $null -ne $JsonContent.profiles.$ProfileID) {
+                    $JsonContent.profiles.psobject.Properties.Remove($ProfileID)
+                    
+                    $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+                    $JsonString = ConvertTo-Json $JsonContent -Depth 30
+                    [System.IO.File]::WriteAllText($OfficialProfilesJson, $JsonString, $Utf8NoBom)
+                    Write-Log "Removed BlackStickX profile from Official Launcher." "SUCCESS"
                 }
-                $ProfilesStructure = @{"profiles" = $FilteredProfiles}
-                $JsonOutput = ConvertTo-Json $ProfilesStructure -Depth 10
-                [IO.File]::WriteAllText($SKProfilesJson, $JsonOutput, [System.Text.Encoding]::UTF8)
-                Write-Log "BlackStickX profile removed from SKLauncher successfully." "SUCCESS"
             }
         }
         catch {
-            Write-Log "Could not clean profile from SKLauncher profiles.json: $_" "WARN"
+            Write-Log "Could not modify launcher_profiles.json during uninstallation." "WARN"
+        }
+    }
+
+    # 2. SKLauncher
+    $TargetProfileId = "profile-blackstickx-modpack"
+    if (Test-Path $SKProfilesJson) {
+        try {
+            $RawText = [System.IO.File]::ReadAllText($SKProfilesJson)
+            if (-not [string]::IsNullOrWhiteSpace($RawText)) {
+                $ParsedJson = $RawText | ConvertFrom-Json
+                if ($null -ne $ParsedJson.profiles) {
+                    $RemainingProfiles = @($ParsedJson.profiles | Where-Object { $_.id -ne $TargetProfileId })
+                    
+                    $ProfilesStructure = [PSCustomObject]@{
+                        "profiles" = [array]$RemainingProfiles
+                    }
+                    
+                    $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+                    $JsonOutput = ConvertTo-Json $ProfilesStructure -Depth 10
+                    [System.IO.File]::WriteAllText($SKProfilesJson, $JsonOutput, $Utf8NoBom)
+                    Write-Log "Removed BlackStickX profile from SKLauncher." "SUCCESS"
+                }
+            }
+        }
+        catch {
+            Write-Log "Could not modify SKLauncher profiles.json during uninstallation." "WARN"
         }
     }
 }
@@ -536,7 +564,7 @@ function Invoke-FullInstallation {
     Invoke-SecureDownload -Url $Downloads["Manifest"] -DestinationPath $ManifestPath -FileName "Modpack Architecture Manifest"
 
     Configure-OfficialLauncherProfile -SelectedRamGB $ChosenRam
-    Configure-SKLauncherProfile
+    Configure-SKLauncherProfile -SelectedRamGB $ChosenRam
     Deploy-SKLauncher
 
     Write-Log "Installation workflow execution completed successfully!" "SUCCESS"
@@ -577,7 +605,7 @@ function Invoke-UpdateWorkflow {
     Invoke-SecureDownload -Url $Downloads["Manifest"] -DestinationPath $ManifestPath -FileName "Updating Manifest References"
     
     Configure-OfficialLauncherProfile -SelectedRamGB $ChosenRam
-    Configure-SKLauncherProfile
+    Configure-SKLauncherProfile -SelectedRamGB $ChosenRam
 
     Write-Log "Surgical update workflow for Mods and Config executed correctly." "SUCCESS"
 }
@@ -602,15 +630,12 @@ function Invoke-Uninstallation {
     Write-Log "=========================================" "INFO"
     
     Clean-ModpackDirectories
+    Remove-LauncherProfiles
     
     $ManifestPath = Join-Path $MinecraftDir "manifest.json"
     if (Test-Path $ManifestPath) { Remove-Item $ManifestPath -Force }
-
-    # Eliminar perfiles de los Launchers automáticamente
-    Remove-OfficialLauncherProfile
-    Remove-SKLauncherProfile
     
-    Write-Log "BlackStickX Modpack structural definitions and launcher profiles cleanly removed." "SUCCESS"
+    Write-Log "BlackStickX Modpack structural definitions cleanly removed." "SUCCESS"
 }
 
 # -----------------------------------------------------------------
@@ -624,22 +649,22 @@ function Show-MainMenu {
     
     Clear-Host
     Write-Host "`n====================================================================" -ForegroundColor Cyan
-    Write-Host "                    BLACKSTICKX MODPACK INSTALLER                   " -ForegroundColor Cyan
+    Write-Host "                   BLACKSTICKX MODPACK INSTALLER                    " -ForegroundColor Cyan
     Write-Host "====================================================================" -ForegroundColor Cyan
-    Write-Host "   Versión del Modpack: 1.20.1 | Forge: $ForgeVersion" -ForegroundColor Gray
-    Write-Host "   Destino: $MinecraftDir" -ForegroundColor Gray
+    Write-Host "  Versión del Modpack: 1.20.1 | Forge: $ForgeVersion" -ForegroundColor Gray
+    Write-Host "  Destino: $MinecraftDir" -ForegroundColor Gray
     Write-Host "--------------------------------------------------------------------" -ForegroundColor Cyan
-    Write-Host "   [1] Instalar (Instalación limpia completa + Auto Perfiles)" -ForegroundColor White
+    Write-Host "  [1] Instalar (Instalación limpia completa + Auto Perfiles)" -ForegroundColor White
     Write-Host ""
-    Write-Host "   [2] Actualizar (Solo Mods y Config, mantiene todo lo demás)" -ForegroundColor White
+    Write-Host "  [2] Actualizar (Solo Mods y Config, mantiene todo lo demás)" -ForegroundColor White
     Write-Host ""
-    Write-Host "   [3] Reparar (Borrado total y reinstalación limpia completa)" -ForegroundColor White
+    Write-Host "  [3] Reparar (Borrado total y reinstalación limpia completa)" -ForegroundColor White
     Write-Host ""
-    Write-Host "   [4] Desinstalar (Elimina el modpack y sus perfiles de forma segura)" -ForegroundColor White
+    Write-Host "  [4] Desinstalar (Elimina el modpack de forma segura)" -ForegroundColor White
     Write-Host ""
-    Write-Host "   [5] Abrir Carpeta .minecraft" -ForegroundColor White
+    Write-Host "  [5] Abrir Carpeta .minecraft" -ForegroundColor White
     Write-Host ""
-    Write-Host "   [6] Salir" -ForegroundColor White
+    Write-Host "  [6] Salir" -ForegroundColor White
     Write-Host "====================================================================" -ForegroundColor Cyan
     Write-Host ""
 }
@@ -647,7 +672,7 @@ function Show-MainMenu {
 # Main Application Entry Execution Loop
 do {
     Show-MainMenu
-    $Choice = Read-Host "   Seleccione una opción de gestión [1-6]"
+    $Choice = Read-Host "  Seleccione una opción de gestión [1-6]"
     
     try {
         switch ($Choice) {
@@ -671,7 +696,7 @@ do {
             }
             "4" {
                 Invoke-Uninstallation
-                Write-Host "`nModpack y perfiles desinstalados exitosamente. Presione cualquier tecla para continuar..." -ForegroundColor Green
+                Write-Host "`nModpack desinstalado exitosamente. Presione cualquier tecla para continuar..." -ForegroundColor Green
                 [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }
             "5" {
