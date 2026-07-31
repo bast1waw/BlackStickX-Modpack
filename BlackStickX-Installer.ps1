@@ -41,7 +41,7 @@ $Downloads = @{
     "Shaderpacks"    = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/shaderpacks.zip";
     "SKLauncherJar"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18.jar";
     "SKLauncherExe"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18_Setup.exe";
-    "ModpackIcon"    = "https://raw.githubusercontent.com/bast1waw/BlackStickX-Modpack/main/ModPack%20ICON.png"
+    "ModpackIcon"    = "https://raw.githubusercontent.com/bast1waw/BlackStickX-Modpack/main/BlackStickX%20Logo%20Install%20Launcher.png"
 }
 
 # -----------------------------------------------------------------
@@ -228,7 +228,7 @@ function Configure-OfficialLauncherProfile {
     $ProfileID = "bb546bf4fb01335bc30f527b680f100b"
     $Timestamp = (Get-Date -ToUniversalTime).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
 
-    $NewProfileData = [ordered]@{
+    $NewProfile = [ordered]@{
         "created"       = $Timestamp
         "icon"          = $IconBase64
         "javaArgs"      = $JvmArgs
@@ -238,39 +238,41 @@ function Configure-OfficialLauncherProfile {
         "type"          = "custom"
     }
 
-    $JsonContent = $null
+    $ProfilesDict = [ordered]@{}
+    $FileVersion = 6
 
     if (Test-Path $OfficialProfilesJson) {
         try {
             $RawText = [System.IO.File]::ReadAllText($OfficialProfilesJson)
             if (-not [string]::IsNullOrWhiteSpace($RawText)) {
-                $JsonContent = $RawText | ConvertFrom-Json
+                $Parsed = $RawText | ConvertFrom-Json
+                if ($null -ne $Parsed.version) { $FileVersion = $Parsed.version }
+                
+                if ($null -ne $Parsed.profiles) {
+                    foreach ($prop in $Parsed.profiles.psobject.Properties) {
+                        $ProfilesDict[$prop.Name] = $prop.Value
+                    }
+                }
             }
         }
         catch {
-            Write-Log "Failed to parse launcher_profiles.json. A new base profile file will be generated." "WARN"
+            Write-Log "Failed to parse launcher_profiles.json. Rebuilding structure." "WARN"
         }
     }
 
-    if ($null -eq $JsonContent) {
-        $JsonContent = [PSCustomObject]@{
-            "profiles" = [PSCustomObject]@{}
-            "version"  = 6
-        }
+    if ($ProfilesDict.Contains($ProfileID) -and $null -ne $ProfilesDict[$ProfileID].created) {
+        $NewProfile["created"] = $ProfilesDict[$ProfileID].created
     }
 
-    if ($null -eq $JsonContent.profiles) {
-        $JsonContent | Add-Member -MemberType NoteProperty -Name "profiles" -Value ([PSCustomObject]@{}) -Force
-    }
+    $ProfilesDict[$ProfileID] = $NewProfile
 
-    if ($null -ne $JsonContent.profiles.$ProfileID -and $null -ne $JsonContent.profiles.$ProfileID.created) {
-        $NewProfileData["created"] = $JsonContent.profiles.$ProfileID.created
+    $FinalStructure = [ordered]@{
+        "profiles" = $ProfilesDict
+        "version"  = $FileVersion
     }
-
-    $JsonContent.profiles | Add-Member -MemberType NoteProperty -Name $ProfileID -Value ([PSCustomObject]$NewProfileData) -Force
 
     $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    $JsonString = ConvertTo-Json $JsonContent -Depth 30
+    $JsonString = ConvertTo-Json $FinalStructure -Depth 30
     [System.IO.File]::WriteAllText($OfficialProfilesJson, $JsonString, $Utf8NoBom)
 
     Write-Log "Successfully updated 'BlackStickX' profile in Official Launcher." "SUCCESS"
@@ -300,7 +302,7 @@ function Configure-SKLauncherProfile {
         "visibility"       = "CLOSE_LAUNCHER"
     }
 
-    $ExistingProfiles = @()
+    $ProfilesList = [System.Collections.Generic.List[object]]::new()
 
     if (Test-Path $SKProfilesJson) {
         try {
@@ -310,21 +312,21 @@ function Configure-SKLauncherProfile {
                 if ($null -ne $ParsedJson.profiles) {
                     foreach ($p in $ParsedJson.profiles) {
                         if ($p.id -ne $TargetProfileId) {
-                            $ExistingProfiles += $p
+                            $ProfilesList.Add($p)
                         }
                     }
                 }
             }
         }
         catch {
-            Write-Log "Existing SKLauncher profiles.json was unreadable or corrupted. Resetting profile structure." "WARN"
+            Write-Log "Existing SKLauncher profiles.json was unreadable or corrupted." "WARN"
         }
     }
 
-    $ExistingProfiles += [PSCustomObject]$NewProfile
+    $ProfilesList.Add($NewProfile)
 
-    $ProfilesStructure = [PSCustomObject]@{
-        "profiles" = [array]$ExistingProfiles
+    $ProfilesStructure = [ordered]@{
+        "profiles" = $ProfilesList.ToArray()
     }
 
     $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -343,12 +345,22 @@ function Remove-LauncherProfiles {
         try {
             $RawText = [System.IO.File]::ReadAllText($OfficialProfilesJson)
             if (-not [string]::IsNullOrWhiteSpace($RawText)) {
-                $JsonContent = $RawText | ConvertFrom-Json
-                if ($null -ne $JsonContent.profiles -and $null -ne $JsonContent.profiles.$ProfileID) {
-                    $JsonContent.profiles.psobject.Properties.Remove($ProfileID)
+                $Parsed = $RawText | ConvertFrom-Json
+                if ($null -ne $Parsed.profiles) {
+                    $ProfilesDict = [ordered]@{}
+                    foreach ($prop in $Parsed.profiles.psobject.Properties) {
+                        if ($prop.Name -ne $ProfileID) {
+                            $ProfilesDict[$prop.Name] = $prop.Value
+                        }
+                    }
+                    
+                    $FinalStructure = [ordered]@{
+                        "profiles" = $ProfilesDict
+                        "version"  = if ($null -ne $Parsed.version) { $Parsed.version } else { 6 }
+                    }
                     
                     $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-                    $JsonString = ConvertTo-Json $JsonContent -Depth 30
+                    $JsonString = ConvertTo-Json $FinalStructure -Depth 30
                     [System.IO.File]::WriteAllText($OfficialProfilesJson, $JsonString, $Utf8NoBom)
                     Write-Log "Removed BlackStickX profile from Official Launcher." "SUCCESS"
                 }
@@ -367,10 +379,15 @@ function Remove-LauncherProfiles {
             if (-not [string]::IsNullOrWhiteSpace($RawText)) {
                 $ParsedJson = $RawText | ConvertFrom-Json
                 if ($null -ne $ParsedJson.profiles) {
-                    $RemainingProfiles = @($ParsedJson.profiles | Where-Object { $_.id -ne $TargetProfileId })
+                    $ProfilesList = [System.Collections.Generic.List[object]]::new()
+                    foreach ($p in $ParsedJson.profiles) {
+                        if ($p.id -ne $TargetProfileId) {
+                            $ProfilesList.Add($p)
+                        }
+                    }
                     
-                    $ProfilesStructure = [PSCustomObject]@{
-                        "profiles" = [array]$RemainingProfiles
+                    $ProfilesStructure = [ordered]@{
+                        "profiles" = $ProfilesList.ToArray()
                     }
                     
                     $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
