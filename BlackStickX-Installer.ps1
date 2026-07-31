@@ -41,7 +41,7 @@ $Downloads = @{
     "Shaderpacks"    = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/shaderpacks.zip";
     "SKLauncherJar"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18.jar";
     "SKLauncherExe"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18_Setup.exe";
-    "ModpackIcon"    = "https://raw.githubusercontent.com/bast1waw/BlackStickX-Modpack/main/BlackStickX%20Logo%20Install%20Launcher.png"
+    "ModpackIcon"    = "https://raw.githubusercontent.com/bast1waw/BlackStickX-Modpack/main/BlackStickX%20Logo%20Install%20Launcher%20128x128.png"
 }
 
 # -----------------------------------------------------------------
@@ -207,21 +207,32 @@ function Configure-OfficialLauncherProfile {
     )
     Write-Log "Configuring official Minecraft Launcher profile for Premium users..." "INFO"
     
-    $LocalLogoPath = Join-Path $WorkDir "modpack_logo.png"
+    # Variables de respaldo locales
+    $TargetForgeVersion = if ($script:ForgeTargetID) { $script:ForgeTargetID } else { "1.20.1-forge-47.4.22" }
+    $ProfilesJsonPath   = if ($script:OfficialProfilesJson) { $script:OfficialProfilesJson } else { Join-Path $env:APPDATA ".minecraft\launcher_profiles.json" }
+    $WorkDirectory      = if ($script:WorkDir) { $script:WorkDir } else { Join-Path $env:TEMP "BlackStickX_Setup" }
+
+    $LocalLogoPath = Join-Path $WorkDirectory "modpack_logo.png"
     $IconBase64 = "Furnace" # Respaldo por defecto
 
+    # Procesar descarga y codificación de la imagen 128x128 en Base64
     try {
-        Invoke-SecureDownload -Url $Downloads["ModpackIcon"] -DestinationPath $LocalLogoPath -FileName "Custom Modpack Logo"
-        
-        if (Test-Path $LocalLogoPath) {
-            $Bytes = [IO.File]::ReadAllBytes($LocalLogoPath)
-            $Base64String = [Convert]::ToBase64String($Bytes)
-            $IconBase64 = "data:image/png;base64,$Base64String"
-            Write-Log "Custom PNG logo successfully encoded into Base64 format." "SUCCESS"
+        if ($Downloads.ContainsKey("ModpackIcon") -and $Downloads["ModpackIcon"]) {
+            Invoke-SecureDownload -Url $Downloads["ModpackIcon"] -DestinationPath $LocalLogoPath -FileName "Custom Modpack Logo (128x128)"
+            
+            if (Test-Path $LocalLogoPath) {
+                $Bytes = [System.IO.File]::ReadAllBytes($LocalLogoPath)
+                if ($Bytes.Length -gt 0) {
+                    $Base64String = [System.Convert]::ToBase64String($Bytes)
+                    $IconBase64 = "data:image/png;base64,$Base64String"
+                    Write-Log "Custom PNG logo (128x128) successfully encoded into Base64 format." "SUCCESS"
+                }
+            }
         }
     }
     catch {
-        Write-Log "Could not process custom logo. Falling back to default furnace icon." "WARN"
+        Write-Log "Could not process custom logo ($($_)). Falling back to default furnace icon." "WARN"
+        $IconBase64 = "Furnace"
     }
     
     $JvmArgs = "-Xmx${SelectedRamGB}G -XX:+UnlockExperimentalVMOptions -XX:+UseG1GC -XX:G1NewSizePercent=20 -XX:G1ReservePercent=20 -XX:MaxGCPauseMillis=50 -XX:G1HeapRegionSize=32M"
@@ -233,7 +244,7 @@ function Configure-OfficialLauncherProfile {
         "icon"          = $IconBase64
         "javaArgs"      = $JvmArgs
         "lastUsed"      = "1970-01-01T00:00:00.000Z"
-        "lastVersionId" = $ForgeTargetID
+        "lastVersionId" = $TargetForgeVersion
         "name"          = "BlackStickX"
         "type"          = "custom"
     }
@@ -241,22 +252,25 @@ function Configure-OfficialLauncherProfile {
     $ProfilesDict = [ordered]@{}
     $FileVersion = 6
 
-    if (Test-Path $OfficialProfilesJson) {
+    # Lectura y parsing seguro del JSON
+    if (Test-Path $ProfilesJsonPath) {
         try {
-            $RawText = [System.IO.File]::ReadAllText($OfficialProfilesJson)
+            $RawText = [System.IO.File]::ReadAllText($ProfilesJsonPath)
             if (-not [string]::IsNullOrWhiteSpace($RawText)) {
                 $Parsed = $RawText | ConvertFrom-Json
-                if ($null -ne $Parsed.version) { $FileVersion = $Parsed.version }
+                if ($null -ne $Parsed -and $null -ne $Parsed.version) { $FileVersion = $Parsed.version }
                 
-                if ($null -ne $Parsed.profiles) {
-                    foreach ($prop in $Parsed.profiles.psobject.Properties) {
-                        $ProfilesDict[$prop.Name] = $prop.Value
+                if ($null -ne $Parsed -and $null -ne $Parsed.profiles) {
+                    $Props = Get-Member -InputObject $Parsed.profiles -MemberType NoteProperty
+                    foreach ($prop in $Props) {
+                        $pName = $prop.Name
+                        $ProfilesDict[$pName] = $Parsed.profiles.$pName
                     }
                 }
             }
         }
         catch {
-            Write-Log "Failed to parse launcher_profiles.json. Rebuilding structure." "WARN"
+            Write-Log "Failed to parse launcher_profiles.json. Rebuilding new structure." "WARN"
         }
     }
 
@@ -271,11 +285,20 @@ function Configure-OfficialLauncherProfile {
         "version"  = $FileVersion
     }
 
-    $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    $JsonString = ConvertTo-Json $FinalStructure -Depth 30
-    [System.IO.File]::WriteAllText($OfficialProfilesJson, $JsonString, $Utf8NoBom)
+    try {
+        $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        $JsonString = ConvertTo-Json $FinalStructure -Depth 30
+        
+        $ParentDir = Split-Path $ProfilesJsonPath -Parent
+        if (-not (Test-Path $ParentDir)) { New-Item -ItemType Directory -Path $ParentDir | Out-Null }
 
-    Write-Log "Successfully updated 'BlackStickX' profile in Official Launcher." "SUCCESS"
+        [System.IO.File]::WriteAllText($ProfilesJsonPath, $JsonString, $Utf8NoBom)
+        Write-Log "Successfully updated 'BlackStickX' profile in Official Launcher." "SUCCESS"
+    }
+    catch {
+        Write-Log "Error writing launcher_profiles.json: $_" "ERROR"
+        throw $_
+    }
 }
 
 function Configure-SKLauncherProfile {
@@ -284,8 +307,12 @@ function Configure-SKLauncherProfile {
     )
     Write-Log "Configuring custom SKLauncher profile subsystem..." "INFO"
     
-    if (-not (Test-Path $SKLauncherDir)) {
-        New-Item -ItemType Directory -Path $SKLauncherDir | Out-Null
+    $TargetForgeVersion = if ($script:ForgeTargetID) { $script:ForgeTargetID } else { "1.20.1-forge-47.4.22" }
+    $SKDir              = if ($script:SKLauncherDir) { $script:SKLauncherDir } else { Join-Path $env:APPDATA "sklauncher" }
+    $SKJsonPath         = if ($script:SKProfilesJson) { $script:SKProfilesJson } else { Join-Path $SKDir "profiles.json" }
+
+    if (-not (Test-Path $SKDir)) {
+        New-Item -ItemType Directory -Path $SKDir | Out-Null
     }
 
     $RamInMB = [int]($SelectedRamGB * 1024)
@@ -294,7 +321,7 @@ function Configure-SKLauncherProfile {
     $NewProfile = [ordered]@{
         "id"               = $TargetProfileId
         "name"             = "BlackStickX"
-        "version"          = $ForgeTargetID
+        "version"          = $TargetForgeVersion
         "maxRam"           = $RamInMB
         "customResolution" = $false
         "resolutionWidth"  = 854
@@ -304,12 +331,12 @@ function Configure-SKLauncherProfile {
 
     $ProfilesList = [System.Collections.Generic.List[object]]::new()
 
-    if (Test-Path $SKProfilesJson) {
+    if (Test-Path $SKJsonPath) {
         try {
-            $RawText = [System.IO.File]::ReadAllText($SKProfilesJson)
+            $RawText = [System.IO.File]::ReadAllText($SKJsonPath)
             if (-not [string]::IsNullOrWhiteSpace($RawText)) {
                 $ParsedJson = $RawText | ConvertFrom-Json
-                if ($null -ne $ParsedJson.profiles) {
+                if ($null -ne $ParsedJson -and $null -ne $ParsedJson.profiles) {
                     foreach ($p in $ParsedJson.profiles) {
                         if ($p.id -ne $TargetProfileId) {
                             $ProfilesList.Add($p)
@@ -331,7 +358,7 @@ function Configure-SKLauncherProfile {
 
     $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     $JsonOutput = ConvertTo-Json $ProfilesStructure -Depth 10
-    [System.IO.File]::WriteAllText($SKProfilesJson, $JsonOutput, $Utf8NoBom)
+    [System.IO.File]::WriteAllText($SKJsonPath, $JsonOutput, $Utf8NoBom)
 
     Write-Log "Profile 'BlackStickX' synchronized successfully in SKLauncher with ${SelectedRamGB}GB RAM." "SUCCESS"
 }
@@ -346,11 +373,13 @@ function Remove-LauncherProfiles {
             $RawText = [System.IO.File]::ReadAllText($OfficialProfilesJson)
             if (-not [string]::IsNullOrWhiteSpace($RawText)) {
                 $Parsed = $RawText | ConvertFrom-Json
-                if ($null -ne $Parsed.profiles) {
+                if ($null -ne $Parsed -and $null -ne $Parsed.profiles) {
                     $ProfilesDict = [ordered]@{}
-                    foreach ($prop in $Parsed.profiles.psobject.Properties) {
+                    $Props = Get-Member -InputObject $Parsed.profiles -MemberType NoteProperty
+                    foreach ($prop in $Props) {
                         if ($prop.Name -ne $ProfileID) {
-                            $ProfilesDict[$prop.Name] = $prop.Value
+                            $pName = $prop.Name
+                            $ProfilesDict[$pName] = $Parsed.profiles.$pName
                         }
                     }
                     
@@ -378,7 +407,7 @@ function Remove-LauncherProfiles {
             $RawText = [System.IO.File]::ReadAllText($SKProfilesJson)
             if (-not [string]::IsNullOrWhiteSpace($RawText)) {
                 $ParsedJson = $RawText | ConvertFrom-Json
-                if ($null -ne $ParsedJson.profiles) {
+                if ($null -ne $ParsedJson -and $null -ne $ParsedJson.profiles) {
                     $ProfilesList = [System.Collections.Generic.List[object]]::new()
                     foreach ($p in $ParsedJson.profiles) {
                         if ($p.id -ne $TargetProfileId) {
@@ -696,7 +725,7 @@ do {
             "1" {
                 Invoke-FullInstallation
                 Write-Host "`n¡Instalación lista!" -ForegroundColor Green
-                Write-Host "El perfil 'BlackStickX' ha sido configurado con tu selección de RAM y tu icono personalizado." -ForegroundColor Green
+                Write-Host "El perfil 'BlackStickX' ha sido configurado con tu selección de RAM y tu icono personalizado de 128x128." -ForegroundColor Green
                 Write-Host "Presione cualquier tecla para volver al menú principal..." -ForegroundColor White
                 [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }
