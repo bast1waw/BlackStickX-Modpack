@@ -10,12 +10,14 @@ $ErrorActionPreference = "Stop"
 # -----------------------------------------------------------------
 # GLOBAL PATHS & CONFIGURATION
 # -----------------------------------------------------------------
-$MinecraftDir  = Join-Path $env:APPDATA ".minecraft"
-$VersionsDir   = Join-Path $MinecraftDir "versions"
-$ForgeVersion  = "1.20.1-47.4.22"
-$ForgeTargetID = "1.20.1-forge-47.4.22"
-$LogPath       = Join-Path $env:TEMP "BlackStickXInstaller.log"
-$WorkDir       = Join-Path $env:TEMP "BlackStickX_Setup"
+$MinecraftDir   = Join-Path $env:APPDATA ".minecraft"
+$SKLauncherDir  = Join-Path $env:APPDATA "sklauncher"
+$ProfilesJson   = Join-Path $SKLauncherDir "profiles.json"
+$VersionsDir    = Join-Path $MinecraftDir "versions"
+$ForgeVersion   = "1.20.1-47.4.22"
+$ForgeTargetID  = "1.20.1-forge-47.4.22"
+$LogPath        = Join-Path $env:TEMP "BlackStickXInstaller.log"
+$WorkDir        = Join-Path $env:TEMP "BlackStickX_Setup"
 
 # Core Modpack Directories to Manage
 $ModpackFolders = @("mods", "config", "defaultconfigs", "kubejs", "resourcepacks", "shaderpacks")
@@ -85,7 +87,6 @@ function Invoke-SecureDownload {
     Write-Log "Downloading $FileName (High-Speed Mode)..." "INFO"
     
     $WebClient = $null
-    
     try {
         $OldProgressPreference = $ProgressPreference
         $ProgressPreference = 'SilentlyContinue'
@@ -126,6 +127,67 @@ function Safe-ExtractArchive {
     catch {
         Write-Log "Extraction routine encountered a critical error: $_" "ERROR"
         throw $_
+    }
+}
+
+# -----------------------------------------------------------------
+# SKLAUNCHER PROFILE AUTOMATION SUBSYSTEM
+# -----------------------------------------------------------------
+function Configure-SKLauncherProfile {
+    Write-Log "Configuring custom SKLauncher profile subsystem..." "INFO"
+    
+    if (-not (Test-Path $SKLauncherDir)) {
+        New-Item -ItemType Directory -Path $SKLauncherDir | Out-Null
+    }
+
+    # Definición del nuevo objeto de perfil optimizado con Forge y 4GB de RAM
+    $NewProfile = [ordered]@{
+        "id" = "profile-blackstickx-modpack"
+        "name" = "BlackStickX"
+        "version" = $ForgeTargetID
+        "maxRam" = 4096
+        "customResolution" = $false
+        "resolutionWidth" = 854
+        "resolutionHeight" = 480
+        "visibility" = "CLOSE_LAUNCHER"
+    }
+
+    $ProfilesStructure = @{"profiles" = @($NewProfile)}
+
+    if (Test-Path $ProfilesJson) {
+        try {
+            $ExistingJson = Get-Content $ProfilesJson -Raw | ConvertFrom-Json -ErrorAction SilentlyContinue
+            if ($ExistingJson -and $ExistingJson.profiles) {
+                # Filtrar si ya existía para no duplicarlo
+                $FilteredProfiles = @()
+                foreach ($p in $ExistingJson.profiles) {
+                    if ($p.id -ne "profile-blackstickx-modpack") { $FilteredProfiles += $p }
+                }
+                $FilteredProfiles += New-Object PSObject -Property $NewProfile
+                $ProfilesStructure = @{"profiles" = $FilteredProfiles}
+                Write-Log "Merged custom profile into existing profiles.json structure." "INFO"
+            }
+        }
+        catch {
+            Write-Log "Existing profiles.json was corrupted. Re-building fresh template." "WARN"
+        }
+    }
+
+    $JsonOutput = ConvertTo-Json $ProfilesStructure -Depth 10
+    [IO.File]::WriteAllText($ProfilesJson, $JsonOutput, [System.Text.Encoding]::UTF8)
+    Write-Log "Profile 'BlackStickX' created successfully with 4GB RAM allocated." "SUCCESS"
+}
+
+function Deploy-SKLauncher {
+    Write-Log "Downloading official SKLauncher Setup variant..." "INFO"
+    $DesktopPath = [Environment]::GetFolderPath("Desktop")
+    $LauncherDest = Join-Path $DesktopPath "SKlauncher.exe"
+    
+    if (-not (Test-Path $LauncherDest)) {
+        Invoke-SecureDownload -Url $Downloads["SKLauncherExe"] -DestinationPath $LauncherDest -FileName "SKLauncher Executable"
+        Write-Log "SKLauncher executable shortcut deployed cleanly onto User Desktop." "SUCCESS"
+    } else {
+        Write-Log "SKLauncher binary already available on Desktop. Skipping redownload." "INFO"
     }
 }
 
@@ -293,6 +355,10 @@ function Invoke-FullInstallation {
     $ManifestPath = Join-Path $MinecraftDir "manifest.json"
     Invoke-SecureDownload -Url $Downloads["Manifest"] -DestinationPath $ManifestPath -FileName "Modpack Architecture Manifest"
 
+    # Automatización y despliegue del launcher no premium
+    Configure-SKLauncherProfile
+    Deploy-SKLauncher
+
     Write-Log "Installation workflow execution completed successfully!" "SUCCESS"
 }
 
@@ -329,6 +395,9 @@ function Invoke-UpdateWorkflow {
 
     $ManifestPath = Join-Path $MinecraftDir "manifest.json"
     Invoke-SecureDownload -Url $Downloads["Manifest"] -DestinationPath $ManifestPath -FileName "Updating Manifest References"
+    
+    # Reforzar perfil en caso de actualización
+    Configure-SKLauncherProfile
 
     Write-Log "Surgical update workflow for Mods and Config executed correctly." "SUCCESS"
 }
@@ -362,6 +431,10 @@ function Invoke-RepairWorkflow {
         Invoke-SecureDownload -Url $Downloads["ServersDat"] -DestinationPath $ServerDatPath -FileName "Restoring Server Profiles"
     }
 
+    # Reparar también el entorno del launcher si falta
+    Configure-SKLauncherProfile
+    Deploy-SKLauncher
+
     Write-Log "Repair routine complete. System environment state stable." "SUCCESS"
 }
 
@@ -382,10 +455,8 @@ function Invoke-Uninstallation {
 # INTERACTIVE TERMINAL USER INTERFACE
 # -----------------------------------------------------------------
 function Show-MainMenu {
-    # Forzar a la consola a procesar caracteres en UTF-8 nativo
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     
-    # Ajustar dinámicamente las dimensiones físicas de la ventana para dar más espacio visual
     $Host.UI.RawUI.WindowSize = New-Object System.Management.Automation.Host.Size(85, 28)
     $Host.UI.RawUI.BufferSize = New-Object System.Management.Automation.Host.Size(85, 100)
     
@@ -396,7 +467,7 @@ function Show-MainMenu {
     Write-Host "  Versión del Modpack: 1.20.1 | Forge: $ForgeVersion" -ForegroundColor Gray
     Write-Host "  Destino: $MinecraftDir" -ForegroundColor Gray
     Write-Host "--------------------------------------------------------------------" -ForegroundColor Cyan
-    Write-Host "  [1] Instalar (Instalación limpia completa)" -ForegroundColor White
+    Write-Host "  [1] Instalar (Instalación limpia completa + SKLauncher)" -ForegroundColor White
     Write-Host ""
     Write-Host "  [2] Actualizar (Solo Mods y Config, mantiene todo lo demás)" -ForegroundColor White
     Write-Host ""
@@ -420,7 +491,9 @@ do {
         switch ($Choice) {
             "1" {
                 Invoke-FullInstallation
-                Write-Host "`nOperación completada sin problemas. Presione cualquier tecla para volver al menú principal..." -ForegroundColor Green
+                Write-Host "`n¡Instalación lista! SKLauncher se ha descargado en tu Escritorio." -ForegroundColor Green
+                Write-Host "El perfil 'BlackStickX' ya está configurado con 4GB de RAM." -ForegroundColor Green
+                Write-Host "Presione cualquier tecla para volver al menú principal..." -ForegroundColor White
                 [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }
             "2" {
