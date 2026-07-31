@@ -85,7 +85,7 @@ function Invoke-SecureDownload {
         [string]$DestinationPath,
         [string]$FileName
     )
-    Write-Log "Descargando $FileName (Modo de alta velocidad)..." "INFO"
+    Write-Log "Descargando $FileName..." "INFO"
     
     $WebClient = $null
     try {
@@ -198,7 +198,7 @@ function Get-UserRamChoice {
 }
 
 # -----------------------------------------------------------------
-# CONFIGURACIÓN DE PERFILES DE LAUNCHERS (PREMIUM Y NO-PREMIUM)
+# CONFIGURACIÓN DE PERFILES DE LAUNCHERS
 # -----------------------------------------------------------------
 function Configure-OfficialLauncherProfile {
     Param (
@@ -258,7 +258,6 @@ function Configure-OfficialLauncherProfile {
         $JsonObject | Add-Member -MemberType NoteProperty -Name "profiles" -Value ([PSCustomObject]@{})
     }
 
-    # Agregar o actualizar el perfil
     if ($JsonObject.profiles.psobject.Properties[$ProfileID]) {
         $JsonObject.profiles.$ProfileID = [PSCustomObject]$NewProfile
     } else {
@@ -502,38 +501,51 @@ function Ensure-Java18Environment {
     return $JavaPath
 }
 
-# -----------------------------------------------------------------
-# CONTROLADORES DE LIMPIEZA
-# -----------------------------------------------------------------
 function Get-ForgeInstallationStatus {
     $ExpectedJson = Join-Path $VersionsDir "$ForgeTargetID\$ForgeTargetID.json"
     if (Test-Path $ExpectedJson) {
-        Write-Log "Instalación de Forge detectada: $ForgeTargetID" "SUCCESS"
         return $true
     }
-    Write-Log "No se encontró el perfil de Forge ($ForgeTargetID)." "WARN"
     return $false
+}
+
+function Remove-ForgeVersionFolder {
+    $ForgeVersionFolder = Join-Path $VersionsDir $ForgeTargetID
+    if (Test-Path $ForgeVersionFolder) {
+        try {
+            Write-Log "Eliminando la versión de Forge existente ($ForgeTargetID) para reinstalación limpia..." "INFO"
+            Remove-Item -Path $ForgeVersionFolder -Recurse -Force
+            Write-Log "Versión de Forge removida correctamente." "SUCCESS"
+        }
+        catch {
+            Write-Log "No se pudo borrar la carpeta $ForgeTargetID. Revisa si Minecraft está abierto." "WARN"
+        }
+    }
 }
 
 function Ensure-ForgeEnvironment {
     Param([string]$JavaExecutable)
     
+    # 1. Purgar la versión previa de Forge en la carpeta /versions para forzar la instalación limpia de cliente
+    Remove-ForgeVersionFolder
+
+    # 2. Proceder con la instalación estricta como Cliente
+    Write-Log "Iniciando instalación de cliente Forge $ForgeVersion..." "INFO"
+    $LocalForgeJar = Join-Path $WorkDir "forge_installer.jar"
+    Invoke-SecureDownload -Url $Downloads["Forge"] -DestinationPath $LocalForgeJar -FileName "Instalador de Forge"
+    
+    Write-Log "Ejecutando el instalador de Forge (Modo Cliente)..." "INFO"
+    
+    # Se añade la ruta base explícita a .minecraft para asegurar la ruta de instalación de cliente
+    $ArgumentList = "-jar `"$LocalForgeJar`" --installClient `"$MinecraftDir`""
+    
+    $Process = Start-Process -FilePath $JavaExecutable -ArgumentList $ArgumentList -WorkingDirectory $WorkDir -PassThru -Wait
+    
     if (-not (Get-ForgeInstallationStatus)) {
-        Write-Log "Iniciando instalación de Forge $ForgeVersion..." "INFO"
-        $LocalForgeJar = Join-Path $WorkDir "forge_installer.jar"
-        Invoke-SecureDownload -Url $Downloads["Forge"] -DestinationPath $LocalForgeJar -FileName "Instalador de Forge"
-        
-        Write-Log "Ejecutando instalador de cliente Forge..." "INFO"
-        $ArgumentList = "-jar `"$LocalForgeJar`" --installClient"
-        
-        $Process = Start-Process -FilePath $JavaExecutable -ArgumentList $ArgumentList -WorkingDirectory $WorkDir -PassThru -Wait
-        
-        if (-not (Get-ForgeInstallationStatus)) {
-            Write-Log "Error en la instalación de Forge." "ERROR"
-            throw "Fallo en la instalación de Forge."
-        }
-        Write-Log "Forge fue instalado correctamente." "SUCCESS"
+        Write-Log "Error en la instalación de Forge como Cliente." "ERROR"
+        throw "Fallo en la instalación de Forge."
     }
+    Write-Log "Forge Cliente fue instalado correctamente en $VersionsDir\$ForgeTargetID." "SUCCESS"
 }
 
 function Clean-ModpackDirectories {
@@ -649,23 +661,14 @@ function Invoke-Uninstallation {
     Write-Log "INICIANDO DESINSTALACIÓN DE BLACKSTICKX" "INFO"
     Write-Log "=========================================" "INFO"
     
-    # 1. Purgar carpetas de datos del modpack (mods, config, etc.)
+    # 1. Purgar carpetas de datos del modpack
     Clean-ModpackDirectories
     
-    # 2. Eliminar las entradas en launcher_profiles.json y sklauncher/profiles.json
+    # 2. Eliminar entradas en launcher_profiles.json y sklauncher/profiles.json
     Remove-LauncherProfiles
     
-    # 3. Eliminar la carpeta de versión específica de Forge
-    $ForgeVersionFolder = Join-Path $VersionsDir $ForgeTargetID
-    if (Test-Path $ForgeVersionFolder) {
-        try {
-            Remove-Item -Path $ForgeVersionFolder -Recurse -Force
-            Write-Log "Versión de Forge removida: $ForgeTargetID" "SUCCESS"
-        }
-        catch {
-            Write-Log "No se pudo eliminar la carpeta de versión $ForgeTargetID. Verifica que Minecraft esté cerrado." "WARN"
-        }
-    }
+    # 3. Eliminar carpeta de versión específica de Forge
+    Remove-ForgeVersionFolder
 
     # 4. Eliminar el manifiesto de instalación
     $ManifestPath = Join-Path $MinecraftDir "manifest.json"
@@ -718,7 +721,7 @@ do {
             "1" {
                 Invoke-FullInstallation
                 Write-Host "`n¡Instalación completada!" -ForegroundColor Green
-                Write-Host "El perfil 'BlackStickX Server' ha sido añadido a tu launcher_profiles.json con la RAM seleccionada." -ForegroundColor Green
+                Write-Host "El perfil 'BlackStickX Server' ha sido añadido a tu launcher con la RAM seleccionada." -ForegroundColor Green
                 Write-Host "Presiona cualquier tecla para volver al menú principal..." -ForegroundColor White
                 [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }
