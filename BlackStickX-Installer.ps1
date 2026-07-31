@@ -17,6 +17,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $MinecraftDir         = Join-Path $env:APPDATA ".minecraft"
 $OfficialProfilesJson = Join-Path $MinecraftDir "launcher_profiles.json"
 $SKLauncherDir        = Join-Path $env:APPDATA "sklauncher"
+$SKLauncherJarPath    = Join-Path $SKLauncherDir "SKlauncher.jar"
 $SKProfilesJson       = Join-Path $SKLauncherDir "profiles.json"
 $VersionsDir          = Join-Path $MinecraftDir "versions"
 $ForgeVersion         = "1.20.1-47.4.22"
@@ -72,7 +73,7 @@ function Write-Log {
 }
 
 # -----------------------------------------------------------------
-# FUNCIONES PRINCIPALES DE UTILIDAD Y DETECCIÓN PREVIA ESTRICTA
+# FUNCIONES PRINCIPALES DE UTILIDAD Y DETECCIÓN EXACTA
 # -----------------------------------------------------------------
 function Initialize-Environment {
     Write-Log "Inicializando directorios de trabajo..." "INFO"
@@ -183,38 +184,21 @@ function Check-InitialLauncherSetup {
         }
 
         if (-not $FoundOfficial) {
-            Write-Host "  [!] No se detectó el Minecraft original. Asegúrate de instalarlo." -ForegroundColor Yellow
+            Write-Host "  [!] No se detectó el Minecraft original en las rutas comunes." -ForegroundColor Yellow
             Write-Log "Minecraft Original indicado pero no hallado físicamente." "WARN"
         }
     } 
     else {
-        Write-Log "El usuario indicó que NO tiene Minecraft original. Buscando SKLauncher..." "INFO"
+        Write-Log "El usuario indicó que NO tiene Minecraft original. Verificando SKLauncher..." "INFO"
         
-        $DesktopPath = [Environment]::GetFolderPath("Desktop")
-        $PossibleSKPaths = @(
-            (Join-Path $DesktopPath "SKlauncher.exe"),
-            "$env:APPDATA\sklauncher\SKlauncher.exe",
-            "$env:LOCALAPPDATA\Programs\sklauncher\SKlauncher.exe",
-            "$env:LOCALAPPDATA\sklauncher\SKlauncher.exe"
-        )
-
-        $FoundSK = $false
-        foreach ($path in $PossibleSKPaths) {
-            if (Test-Path $path) {
-                Write-Host "  SKLauncher detectado en: $path" -ForegroundColor Green
-                Write-Log "SKLauncher detectado en: $path" "SUCCESS"
-                $FoundSK = $true
-                break
-            }
-        }
-
-        # Si tras buscar estrictamente no existe por ningún lado, se ejecuta el instalador y se espera
-        if (-not $FoundSK) {
-            Write-Host "  SKLauncher no encontrado en el sistema. Procediendo a descargarlo e instalarlo..." -ForegroundColor Yellow
-            Write-Log "SKLauncher no fue hallado físicamente. Iniciando despliegue..." "WARN"
-            Deploy-SKLauncherAndWait
+        # Validación estricta con la ruta exacta indicada por el usuario
+        if (Test-Path $SKLauncherJarPath) {
+            Write-Host "  SKLauncher detectado en: $SKLauncherJarPath" -ForegroundColor Green
+            Write-Log "SKLauncher detectado en: $SKLauncherJarPath" "SUCCESS"
         } else {
-            Write-Host "  SKLauncher detectado correctamente." -ForegroundColor Green
+            Write-Host "  SKLauncher no encontrado en la ruta exacta. Procediendo a instalarlo..." -ForegroundColor Yellow
+            Write-Log "SKLauncher no hallado en $SKLauncherJarPath. Iniciando instalador..." "WARN"
+            Deploy-SKLauncherAndWait
         }
     }
 
@@ -230,38 +214,21 @@ function Deploy-SKLauncherAndWait {
         Invoke-SecureDownload -Url $Downloads["SKLauncherExe"] -DestinationPath $InstallerDest -FileName "Instalador de SKLauncher"
         
         Write-Host "  [i] Se abrirá el instalador de SKLauncher. Por favor, instálalo." -ForegroundColor Yellow
-        Write-Host "  [i] Este script se pausará y esperará automáticamente hasta que detecte SKLauncher..." -ForegroundColor Cyan
+        Write-Host "  [i] Este script esperará hasta que detecte el archivo JAR principal..." -ForegroundColor Cyan
         Write-Log "Ejecutando instalador de SKLauncher de forma interactiva..." "INFO"
         
-        # Abre el instalador por encima del código para que el usuario pueda hacer clic
         Start-Process -FilePath $InstallerDest -Wait
 
-        # Bucle de comprobación estricta hasta que el usuario finalice la instalación real
-        $DesktopPath = [Environment]::GetFolderPath("Desktop")
-        $TimeoutSeconds = 600 # 10 minutos de margen máximo
+        # Bucle de comprobación estricta esperando exactamente el JAR en su ruta final
+        $TimeoutSeconds = 600
         $Elapsed = 0
 
         while ($Elapsed -lt $TimeoutSeconds) {
-            $CheckAgainPaths = @(
-                "$env:APPDATA\sklauncher\SKlauncher.exe",
-                "$DesktopPath\SKlauncher.exe",
-                "$env:LOCALAPPDATA\Programs\sklauncher\SKlauncher.exe"
-            )
-            
-            $DetectedNow = $false
-            foreach ($p in $CheckAgainPaths) {
-                if (Test-Path $p) {
-                    $DetectedNow = $true
-                    break
-                }
-            }
-
-            if ($DetectedNow) {
-                Write-Host "  ¡SKLauncher detectado e instalado con éxito!" -ForegroundColor Green
-                Write-Log "SKLauncher detectado satisfactoriamente tras el proceso de instalación." "SUCCESS"
+            if (Test-Path $SKLauncherJarPath) {
+                Write-Host "  ¡SKLauncher detectado con éxito en su ruta final!" -ForegroundColor Green
+                Write-Log "SKLauncher detectado en $SKLauncherJarPath tras la instalación." "SUCCESS"
                 return
             }
-
             Start-Sleep -Seconds 4
             $Elapsed += 4
         }
@@ -699,7 +666,7 @@ function Clean-ModpackDirectories {
                 Write-Log "Carpeta purgada: /$Folder" "INFO"
             }
             catch {
-                Write-Log "No se pudo eliminar la carpeta $Folder. Asegúrate de que Minecraft no esté abierto." "WARN"
+                Write-Log "No se pudo eliminar la carpeta $Folder. Asegúrate de que Minecraft não esté abierto." "WARN"
             }
         }
     }
