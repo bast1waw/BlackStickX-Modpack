@@ -276,7 +276,7 @@ function Invoke-FullInstallation {
     Ensure-ForgeEnvironment -JavaExecutable $JavaPath
     Clean-ModpackDirectories
 
-    # Package Delivery Execution Pipeline (Dirigido a subcarpetas específicas)
+    # Package Delivery Execution Pipeline
     $Packages = @("Mods", "Config", "Defaultconfigs", "KubeJS", "Resourcepacks", "Shaderpacks")
     foreach ($Pkg in $Packages) {
         $ZipDest = Join-Path $WorkDir "$Pkg.zip"
@@ -286,7 +286,7 @@ function Invoke-FullInstallation {
         Safe-ExtractArchive -ZipPath $ZipDest -ExtractLocation $TargetFolder
     }
 
-    # Meta Assets Configuration Integration (Archivos sueltos en la raíz)
+    # Meta Assets Configuration Integration
     $ServerDatPath = Join-Path $MinecraftDir "servers.dat"
     Invoke-SecureDownload -Url $Downloads["ServersDat"] -DestinationPath $ServerDatPath -FileName "Global Multi-Server Profiles"
 
@@ -317,7 +317,7 @@ function Invoke-UpdateWorkflow {
         }
     }
     
-    # Descargar e instalar exclusivamente los paquetes solicitados en sus carpetas dedicadas
+    # Descargar e extraer en subcarpetas dedicadas
     $Packages = @("Mods", "Config")
     foreach ($Pkg in $Packages) {
         $ZipDest = Join-Path $WorkDir "$Pkg.zip"
@@ -382,6 +382,9 @@ function Invoke-Uninstallation {
 # INTERACTIVE TERMINAL USER INTERFACE
 # -----------------------------------------------------------------
 function Show-MainMenu {
+    # Forzar a la consola a procesar caracteres en UTF-8 nativo
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    
     Clear-Host
     Write-Host "================================================================" -ForegroundColor Cyan
     Write-Host "                 BLACKSTICKX MODPACK INSTALLER                  " -ForegroundColor Cyan
