@@ -26,7 +26,7 @@ $LogPath              = Join-Path $env:TEMP "BlackStickXInstaller.log"
 $WorkDir              = Join-Path $env:TEMP "BlackStickX_Setup"
 
 # Icono del Perfil en Base64 Corregido
-$IconBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAMnUlEQVR4nO2dC1QVxxnH/xcBSQRqFCMQVEDSJqk2SKFiGqOoaVNraxKssagnJCcnsac1SdPq0WhOM09jajRRT2xz0oj4rG+tMa1RtDWW1hqi+AYfhYgiKCi+BbyX6RnugPexO7vAvXt378zvnPFxd3Z39vu+ncc3M99CIpFIJBKJRCKRSCQiYQuSZ30CwA8BpALoBoCw5EkogOsASgGUA/gKQCWAowCuBPYRJO3hUQB/c1F4e9NlALSvH4A6oE8AkO4+ACD8/23D3wQ46K3eAcB6APUANB3rWwMAgP9nAMgAK9d+B4D07+N5AADlXJ8HAHBeNwCgAODP43vP6H4A9n77/gBAt4b/A/CBAAD091V73hYAAIAbwP8A4P3+AgAAwP8PAIAwBwEAAMjH34c/3gDAh7W/BQAARAB4ACrLq0oWAAAAAElFTkSuQmCC"
+$IconBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAMnUlEQVR4nO2dC1QVxxnH/xcBSQRqFCMQVEDSJqk2SKFiGqOoaVNraxKssagnJCcnsac1SdPq0WhOW09jajRRT2xz0oj4rG+tMa1RtDWW1hqi+AYfhYgiKCi+BbyX6RnugPexO7vAvXt378zvnPFxd3Z39vu+ncc3M99CIpFIJBKJRCKRSCQiYQuSZ30CwA8BpALoBoCw5EkogOsASgGUA/gKQCWAowCuBPYRJO3hUQB/c1F4e9NlALSvH4A6oE8AkO4+ACD8/23D3wQ46K3eAcB6APUANB3rWwMAgP9nAMgAK9d+B4D07+N5AADlXJ8HAHBeNwCgAODP43vP6H4A9n77/gBAt4b/A/CBAAD091V73hYAAIAbwP8A4P3+AgAAwP8PAIAwBwEAAMjH34c/3gDAh7W/BQAARAB4ACrLq0oWAAAAAElFTkSuQmCC"
 
 # Directorios principales del modpack para gestionar
 $ModpackFolders = @("mods", "config", "defaultconfigs", "kubejs", "resourcepacks", "shaderpacks")
@@ -73,7 +73,7 @@ function Write-Log {
 }
 
 # -----------------------------------------------------------------
-# FUNCIONES PRINCIPALES DE UTILIDAD Y DESCARGA CON PROGRESO
+# FUNCIONES PRINCIPALES DE UTILIDAD Y DETECCIÓN EXACTA
 # -----------------------------------------------------------------
 function Initialize-Environment {
     Write-Log "Inicializando directorios de trabajo..." "INFO"
@@ -93,52 +93,25 @@ function Invoke-SecureDownload {
         [string]$DestinationPath,
         [string]$FileName
     )
-    Write-Host "  Iniciando descarga: $FileName..." -ForegroundColor Cyan
+    Write-Log "Descargando $FileName..." "INFO"
     
-    $WebClient = New-Object System.Net.WebClient
-    
-    $ProgressAction = {
-        param($sender, $e)
-        if ($e.TotalBytesToReceive -gt 0) {
-            $Percentage = $e.ProgressPercentage
-            $DownloadedMb = [Math]::Round($e.BytesReceived / 1MB, 2)
-            $TotalMb = [Math]::Round($e.TotalBytesToReceive / 1MB, 2)
-            
-            $CompletedChars = [Math]::Floor($Percentage / 3.33)
-            $RemainingChars = 30 - $CompletedChars
-            $Bar = ('#' * $CompletedChars) + ('-' * $RemainingChars)
-            
-            Write-Host -NoNewline "`r  [$Bar] $Percentage% ($DownloadedMb MB / $TotalMb MB)   "
-        } else {
-            $DownloadedMb = [Math]::Round($e.BytesReceived / 1MB, 2)
-            Write-Host -NoNewline "`r  Descargados: $DownloadedMb MB...                  "
-        }
-    };
-
-    $EventSubscriber = Register-ObjectEvent -InputObject $WebClient -EventName DownloadProgressChanged -Action $ProgressAction
-
+    $WebClient = $null
     try {
-        $Uri = [System.Uri]::Uri($Url)
-        $WebClient.DownloadFileAsync($Uri, $DestinationPath)
+        $OldProgressPreference = $ProgressPreference
+        $ProgressPreference = 'SilentlyContinue'
 
-        while ($WebClient.IsBusy) {
-            Start-Sleep -Milliseconds 250
-        }
+        $WebClient = New-Object System.Net.WebClient
+        $WebClient.DownloadFile($Url, $DestinationPath)
         
-        Write-Host ""
+        $ProgressPreference = $OldProgressPreference
+        $WebClient.Dispose()
+        
         Write-Log "Descarga completada: $FileName" "SUCCESS"
     }
     catch {
-        Write-Host ""
+        if ($WebClient -ne $null) { $WebClient.Dispose() }
         Write-Log "Error al descargar $FileName desde $Url. Detalles: $_" "ERROR"
         throw $_
-    }
-    finally {
-        if ($EventSubscriber) {
-            Unregister-Event -SourceIdentifier $EventSubscriber.Name -ErrorAction SilentlyContinue
-            Remove-Job -Id $EventSubscriber.Id -ErrorAction SilentlyContinue
-        }
-        $WebClient.Dispose()
     }
 }
 
@@ -190,71 +163,6 @@ function Safe-ExtractArchive {
     }
 }
 
-# -----------------------------------------------------------------
-# GESTIÓN INTELIGENTE DE JAVA 18
-# -----------------------------------------------------------------
-function Get-Java18Binary {
-    Write-Log "Buscando instalación de Java 18 en el sistema..." "INFO"
-    $StandardPaths = @(
-        "$env:ProgramFiles\Java",
-        "${env:ProgramFiles(x86)}\Java",
-        "$env:ProgramFiles\Eclipse Foundation",
-        "$env:ProgramFiles\Zulu",
-        "$env:LOCALAPPDATA\Programs\Eclipse Adoptium"
-    )
-
-    foreach ($Folder in $StandardPaths) {
-        if (Test-Path $Folder) {
-            $Executables = Get-ChildItem -Path $Folder -Filter "java.exe" -Recurse -ErrorAction SilentlyContinue
-            foreach ($Exe in $Executables) {
-                $VersionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($Exe.FullName)
-                if ($VersionInfo.ProductVersion -match "^18\." -or $VersionInfo.FileVersion -match "^18\.") {
-                    Write-Log "Java 18 detectado localmente en: $($Exe.FullName)" "SUCCESS"
-                    return $Exe.FullName
-                }
-            }
-        }
-    }
-
-    if (Get-Command java -ErrorAction SilentlyContinue) {
-        $SysVersion = & java -version 2>&1 | Out-String
-        if ($SysVersion -match 'version "18\.') {
-            $Path = (Get-Command java).Source
-            Write-Log "Java 18 activo detectado en el PATH: $Path" "SUCCESS"
-            return $Path
-        }
-    }
-
-    return $null
-}
-
-function Ensure-Java18Environment {
-    $JavaPath = Get-Java18Binary
-    
-    if ($null -eq $JavaPath) {
-        Write-Log "Java 18 no está instalado. Procediendo a descargarlo desde el repositorio..." "WARN"
-        $LocalJavaExe = Join-Path $WorkDir "jdk18_installer.exe"
-        
-        Invoke-SecureDownload -Url $Downloads["Java18"] -DestinationPath $LocalJavaExe -FileName "Instalador de Java 18"
-        
-        Write-Log "Ejecutando instalador de Java 18 en modo silencioso..." "INFO"
-        Start-Process -FilePath $LocalJavaExe -ArgumentList "/s" -Wait
-        
-        $JavaPath = Get-Java18Binary
-        if ($null -eq $JavaPath) {
-            Write-Log "Error: Se intentó instalar Java 18 pero el sistema no pudo detectarlo." "ERROR"
-            throw "Fallo crítico: No se pudo verificar Java 18."
-        }
-    } else {
-        Write-Log "Java 18 ya se encuentra instalado. Omitiendo instalación de Java." "SUCCESS"
-    }
-    
-    return $JavaPath
-}
-
-# -----------------------------------------------------------------
-# CONFIGURACIÓN DE LANZADORES Y PERFILES
-# -----------------------------------------------------------------
 function Check-InitialLauncherSetup {
     Clear-Host
     Write-Host "====================================================================" -ForegroundColor Cyan
@@ -278,29 +186,62 @@ function Check-InitialLauncherSetup {
             "$env:APPDATA\.minecraft\MinecraftLauncher.exe"
         )
 
+        $FoundOfficial = $false
         foreach ($path in $PossibleOfficialPaths) {
             if (Test-Path $path) {
                 Write-Host "  Minecraft Original Detectado en: $path" -ForegroundColor Green
                 Write-Log "Minecraft Original Detectado en: $path" "SUCCESS"
+                $FoundOfficial = $true
                 break
             }
+        }
+
+        if (-not $FoundOfficial) {
+            try {
+                $uwpCheck = Get-AppxPackage -Name *Microsoft.MinecraftUWP* -ErrorAction SilentlyContinue
+                if ($uwpCheck) {
+                    Write-Host "  Minecraft Original Detectado (Paquete UWP/Windows Store)." -ForegroundColor Green
+                    Write-Log "Minecraft Original Detectado vía UWP." "SUCCESS"
+                    $FoundOfficial = $true
+                }
+            } catch {}
         }
     } 
     else {
         Write-Log "El usuario indicó que NO tiene Minecraft original. Verificando SKLauncher..." "INFO"
-        if (-not (Test-Path $SKLauncherJarPath)) {
+        
+        if (Test-Path $SKLauncherJarPath) {
+            Write-Host "  SKLauncher detectado en: $SKLauncherJarPath" -ForegroundColor Green
+            Write-Log "SKLauncher detectado en: $SKLauncherJarPath" "SUCCESS"
+        } else {
+            Write-Host "  SKLauncher no encontrado. Procediendo a instalarlo..." -ForegroundColor Yellow
             Deploy-SKLauncherAndWait
         }
     }
+
+    Write-Host "`n  Verificación completada. Abriendo el instalador..." -ForegroundColor Cyan
     Start-Sleep -Seconds 2
 }
 
 function Deploy-SKLauncherAndWait {
     Write-Log "Descargando instalador de SKLauncher..." "INFO"
     $InstallerDest = Join-Path $WorkDir "SKlauncher_Setup.exe"
+    
     try {
         Invoke-SecureDownload -Url $Downloads["SKLauncherExe"] -DestinationPath $InstallerDest -FileName "Instalador de SKLauncher"
         Start-Process -FilePath $InstallerDest -Wait
+
+        $TimeoutSeconds = 600
+        $Elapsed = 0
+
+        while ($Elapsed -lt $TimeoutSeconds) {
+            if (Test-Path $SKLauncherJarPath) {
+                Write-Host "  ¡SKLauncher detectado con éxito!" -ForegroundColor Green
+                return
+            }
+            Start-Sleep -Seconds 4
+            $Elapsed += 4
+        }
     }
     catch {
         Write-Log "Error al gestionar la instalación de SKLauncher: $_" "ERROR"
@@ -358,17 +299,20 @@ function Get-UserRamChoice {
 }
 
 function Configure-OfficialLauncherProfile {
-    Param ([int]$SelectedRamGB = 8)
+    Param (
+        [int]$SelectedRamGB = 8
+    )
     Write-Log "Configurando el perfil 'blackstickx' con icono personalizado..." "INFO"
     
-    $TargetForgeVersion = $ForgeTargetID
-    $ProfilesJsonPath   = $OfficialProfilesJson
+    $TargetForgeVersion = if ($script:ForgeTargetID) { $script:ForgeTargetID } else { "1.20.1-forge-47.4.22" }
+    $ProfilesJsonPath   = if ($script:OfficialProfilesJson) { $script:OfficialProfilesJson } else { Join-Path $env:APPDATA ".minecraft\launcher_profiles.json" }
+
     $JvmArgs   = "-Xmx${SelectedRamGB}G -XX:+UnlockExperimentalVMOptions -XX:+UseG1GC -XX:G1NewSizePercent=20 -XX:G1ReservePercent=20 -XX:MaxGCPauseMillis=50 -XX:G1HeapRegionSize=32M"
     $ProfileID = "blackstickx"
 
     $NewProfile = [ordered]@{
         "created"       = "2026-07-31T19:41:10.635Z"
-        "icon"          = $IconBase64
+        "icon"          = $script:IconBase64
         "javaArgs"      = $JvmArgs
         "lastUsed"      = (Get-Date -Format "yyyy-MM-ddTHH:mm:ss.fffZ")
         "lastVersionId" = $TargetForgeVersion
@@ -420,8 +364,10 @@ function Configure-OfficialLauncherProfile {
     try {
         $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
         $JsonString = ConvertTo-Json $JsonObject -Depth 10
+        
         $ParentDir = Split-Path $ProfilesJsonPath -Parent
         if (-not (Test-Path $ParentDir)) { New-Item -ItemType Directory -Path $ParentDir | Out-Null }
+
         [System.IO.File]::WriteAllText($ProfilesJsonPath, $JsonString, $Utf8NoBom)
         Write-Log "Perfil 'blackstickx' actualizado con icono y configurado." "SUCCESS"
     }
@@ -432,7 +378,9 @@ function Configure-OfficialLauncherProfile {
 }
 
 function Configure-SKLauncherProfile {
-    Param ([int]$SelectedRamGB = 4)
+    Param (
+        [int]$SelectedRamGB = 4
+    )
     $SKDir = Join-Path $env:APPDATA "sklauncher"
     $SKJsonPath = Join-Path $SKDir "profiles.json"
 
@@ -491,6 +439,38 @@ function Remove-LauncherProfiles {
         }
         catch {}
     }
+}
+
+function Get-Java18Binary {
+    $StandardPaths = @("$env:ProgramFiles\Java", "${env:ProgramFiles(x86)}\Java", "$env:ProgramFiles\Eclipse Foundation")
+    foreach ($Folder in $StandardPaths) {
+        if (Test-Path $Folder) {
+            foreach ($Exe in (Get-ChildItem -Path $Folder -Filter "java.exe" -Recurse -ErrorAction SilentlyContinue)) {
+                if ([System.Diagnostics.FileVersionInfo]::GetVersionInfo($Exe.FullName).ProductVersion -match "^18\.") {
+                    return $Exe.FullName
+                }
+            }
+        }
+    }
+    if (Get-Command java -ErrorAction SilentlyContinue) {
+        if ((& java -version 2>&1 | Out-String) -match 'version "18\.') { return (Get-Command java).Source }
+    }
+    return $null
+}
+
+function Ensure-Java18Environment {
+    $JavaPath = Get-Java18Binary
+    if ($null -eq $JavaPath) {
+        $LocalJavaExe = Join-Path $WorkDir "jdk18_installer.exe"
+        Invoke-SecureDownload -Url $Downloads["Java18"] -DestinationPath $LocalJavaExe -FileName "Java 18"
+        Start-Process -FilePath $LocalJavaExe -ArgumentList "/s" -Wait
+        $JavaPath = Get-Java18Binary
+    }
+    return $JavaPath
+}
+
+function Get-ForgeInstallationStatus {
+    return (Test-Path (Join-Path $VersionsDir "$ForgeTargetID\$ForgeTargetID.json"))
 }
 
 function Ensure-ForgeEnvironment {
@@ -593,7 +573,7 @@ do {
         switch ($Choice) {
             "1" {
                 Invoke-FullInstallation
-                Write-Host "`n¡Instalación completada con éxito!" -ForegroundColor Green
+                Write-Host "`n¡Instalación completada con el icono personalizado!" -ForegroundColor Green
                 [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }
             "2" {
