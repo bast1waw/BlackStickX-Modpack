@@ -92,7 +92,6 @@ function Invoke-SecureDownload {
         [string]$FileName
     )
     
-    # Imprime exactamente el texto que solicita el usuario indicando qué se descarga
     Write-Host "Descargando $FileName..." -ForegroundColor Cyan
     
     $WebClient = New-Object System.Net.WebClient
@@ -118,14 +117,14 @@ function Invoke-SecureDownload {
     $EventSubscriber = Register-ObjectEvent -InputObject $WebClient -EventName DownloadProgressChanged -Action $ProgressAction
 
     try {
-        $Uri = [System.Uri]::Uri($Url)
+        $Uri = [System.Uri]$Url
         $WebClient.DownloadFileAsync($Uri, $DestinationPath)
 
         while ($WebClient.IsBusy) {
             Start-Sleep -Milliseconds 250
         }
         
-        Write-Host "" # Salto de línea al terminar la descarga de este elemento
+        Write-Host "" 
         Write-Log "Descarga completada: $FileName" "SUCCESS"
     }
     catch {
