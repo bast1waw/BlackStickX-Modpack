@@ -71,7 +71,7 @@ function Write-Log {
 }
 
 # -----------------------------------------------------------------
-# FUNCIONES DE ENTORNO Y DESCARGA CON BARRA DE PROGRESO Y PORCENTAJE
+# FUNCIONES DE ENTORNO Y DESCARGA CON PORCENTAJE VISUAL
 # -----------------------------------------------------------------
 function Initialize-Environment {
     Write-Log "Inicializando directorios de trabajo..." "INFO"
@@ -91,7 +91,9 @@ function Invoke-SecureDownload {
         [string]$DestinationPath,
         [string]$FileName
     )
-    Write-Host "  Iniciando descarga: $FileName..." -ForegroundColor Cyan
+    
+    # Imprime exactamente el texto que solicita el usuario indicando qué se descarga
+    Write-Host "Descargando $FileName..." -ForegroundColor Cyan
     
     $WebClient = New-Object System.Net.WebClient
     
@@ -123,7 +125,7 @@ function Invoke-SecureDownload {
             Start-Sleep -Milliseconds 250
         }
         
-        Write-Host ""
+        Write-Host "" # Salto de línea al terminar la descarga de este elemento
         Write-Log "Descarga completada: $FileName" "SUCCESS"
     }
     catch {
@@ -233,7 +235,7 @@ function Ensure-Java18Environment {
         Write-Log "Java 18 no está instalado. Procediendo a descargarlo desde el repositorio..." "WARN"
         $LocalJavaExe = Join-Path $WorkDir "jdk18_installer.exe"
         
-        Invoke-SecureDownload -Url $Downloads["Java18"] -DestinationPath $LocalJavaExe -FileName "Instalador de Java 18"
+        Invoke-SecureDownload -Url $Downloads["Java18"] -DestinationPath $LocalJavaExe -FileName "Java 18"
         
         Write-Log "Ejecutando instalador de Java 18 en modo silencioso..." "INFO"
         Start-Process -FilePath $LocalJavaExe -ArgumentList "/s" -Wait
@@ -297,7 +299,7 @@ function Deploy-SKLauncherAndWait {
     Write-Log "Descargando instalador de SKLauncher..." "INFO"
     $InstallerDest = Join-Path $WorkDir "SKlauncher_Setup.exe"
     try {
-        Invoke-SecureDownload -Url $Downloads["SKLauncherExe"] -DestinationPath $InstallerDest -FileName "Instalador de SKLauncher"
+        Invoke-SecureDownload -Url $Downloads["SKLauncherExe"] -DestinationPath $InstallerDest -FileName "SKLauncher"
         Start-Process -FilePath $InstallerDest -Wait
     }
     catch {
