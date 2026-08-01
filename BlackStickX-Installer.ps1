@@ -7,7 +7,7 @@
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-# Prevenir errores de codificación en la consola
+# Prevenir errores de codificación en la consola (Caracteres extraños)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -25,12 +25,14 @@ $ForgeTargetID        = "1.20.1-forge-47.4.22"
 $LogPath              = Join-Path $env:TEMP "BlackStickXInstaller.log"
 $WorkDir              = Join-Path $env:TEMP "BlackStickX_Setup"
 
-# Icono del Perfil en Base64
-$IconBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAMnUlEQVR4nO2dC1QVxxnH/xcBSQRqFCMQVEDSJqk2SKFiGqOoaVNraxKssagnJCcnsac1SdPq0WhOM09jajRRT2xz0oj4rG+tMa1RtDWW1hqi+AYfhYgiKCi+BbyX6RnugPexO7vAvXt378zvnPFxd3Z39vu+ncc3M99CIpFIJBKJRCKRSCQiYQuSZ30CwA8BpALoBoCw5InfogOsASgGUA/gKQCWAowCuBPYRJO3hUQB/c1F4e9NlALSvH4A6oE8AkO4+ACD8/23D3wQ46K3eAcB6APUANB3rWwMAgP9nAMgAK9d+B4D07+N5AADlXJ8HAHBeNwCgAODP43vP6H4A9n77/gBAt4b/A/CBAAD091V73hYAAIAbwP8A4P3+AgAAwP8PAIAwBwEAAMjH34c/3gDAh7W/BQAARAB4ACrLq0oWAAAAAElFTkSuQmCC"
+# Icono del Perfil en Base64 Corregido
+$IconBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAMnUlEQVR4nO2dC1QVxxnH/xcBSQRqFCMQVEDSJqk2SKFiGqOoaVNraxKssagnJCcnsac1SdPq0WhOM09jajRRT2xz0oj4rG+tMa1RtDWW1hqi+AYfhYgiKCi+BbyX6RnugPexO7vAvXt378zvnPFxd3Z39vu+ncc3M99CIpFIJBKJRCKRSCQiYQuSZ30CwA8BpALoBoCw5EkogOsASgGUA/gKQCWAowCuBPYRJO3hUQB/c1F4e9NlALSvH4A6oE8AkO4+ACD8/23D3wQ46K3eAcB6APUANB3rWwMAgP9nAMgAK9d+B4D07+N5AADlXJ8HAHBeNwCgAODP43vP6H4A9n77/gBAt4b/A/CBAAD091V73hYAAIAbwP8A4P3+AgAAwP8PAIAwBwEAAMjH34c/3gDAh7W/BQAARAB4ACrLq0oWAAAAAElFTkSuQmCC"
 
 # Directorios principales del modpack para gestionar
 $ModpackFolders = @("mods", "config", "defaultconfigs", "kubejs", "resourcepacks", "shaderpacks")
-$UpdateFolders  = @("mods", "config")
+
+# Objetivos específicos para el subsistema de actualización (Solo Mods y Config)
+$UpdateFolders = @("mods", "config")
 
 # Manifiesto de URLs de descarga
 $Downloads = @{
@@ -71,7 +73,7 @@ function Write-Log {
 }
 
 # -----------------------------------------------------------------
-# FUNCIONES DE ENTORNO Y DESCARGA CON BARRA DE PROGRESO Y PORCENTAJE
+# FUNCIONES PRINCIPALES DE UTILIDAD Y DESCARGA CON PROGRESO
 # -----------------------------------------------------------------
 function Initialize-Environment {
     Write-Log "Inicializando directorios de trabajo..." "INFO"
