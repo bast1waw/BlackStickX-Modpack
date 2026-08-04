@@ -77,10 +77,10 @@ function Write-Log {
 }
 
 # -----------------------------------------------------------------
-# FUNCIONES DE DESCARGA Y ENTORNO
+# FUNCIONES DE ENTORNO Y DESCARGA
 # -----------------------------------------------------------------
 function Initialize-Environment {
-    # Crea todas las carpetas necesarias antes de cualquier descarga
+    # Crea todas las carpetas necesarias antes de realizar descargas
     $FoldersToCreate = @($MinecraftDir, $WorkDir, $SKLauncherDir)
     foreach ($Folder in $FoldersToCreate) {
         if (-not (Test-Path $Folder)) {
@@ -97,13 +97,13 @@ function Invoke-SecureDownload {
     )
     Write-Log "Descargando $FileName..." "INFO"
     
-    # Asegurar la existencia de la carpeta contenedora del archivo destino
+    # Asegurar la existencia de la carpeta contenedora del archivo
     $ParentFolder = Split-Path $DestinationPath -Parent
     if (-not (Test-Path $ParentFolder)) {
         New-Item -ItemType Directory -Path $ParentFolder -Force | Out-Null
     }
 
-    # Intento de descarga usando la clase .NET WebClient (no es bloqueada por GitHub)
+    # Intento principal con WebClient nativo .NET
     try {
         $WebClient = New-Object System.Net.WebClient
         $WebClient.Headers.Add("User-Agent", $Global:UserAgent)
@@ -111,7 +111,7 @@ function Invoke-SecureDownload {
         Write-Log "Descarga exitosa: $FileName" "SUCCESS"
     }
     catch {
-        # Respaldo secundario mediante BITS / PowerShell puro
+        # Método alternativo secundario
         try {
             $ProgressPreference = 'SilentlyContinue'
             Invoke-WebRequest -Uri $Url -OutFile $DestinationPath -UserAgent $Global:UserAgent -UseBasicParsing -ErrorAction Stop
@@ -162,7 +162,82 @@ function Safe-ExtractArchive {
 }
 
 # -----------------------------------------------------------------
-# FLUJO DE INSTALACIÓN DE SKLAUNCHER Y VERIFICACIÓN
+# DETECCIÓN E INSTALACIÓN INTELIGENTE DE JAVA 18 Y JAVA 21
+# -----------------------------------------------------------------
+function Get-InstalledJavaPath {
+    Param ([int]$MajorVersion)
+    
+    # 1. Buscar en rutas habituales
+    $SearchFolders = @(
+        "$env:ProgramFiles\Java", 
+        "${env:ProgramFiles(x86)}\Java", 
+        "$env:ProgramFiles\Eclipse Adoptium",
+        "$env:ProgramFiles\Eclipse Foundation"
+    )
+
+    foreach ($Folder in $SearchFolders) {
+        if (Test-Path $Folder) {
+            $Executables = Get-ChildItem -Path $Folder -Filter "java.exe" -Recurse -ErrorAction SilentlyContinue
+            foreach ($Exe in $Executables) {
+                try {
+                    $FileVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($Exe.FullName).ProductVersion
+                    if ($FileVersion -match "^$MajorVersion\.") {
+                        return $Exe.FullName
+                    }
+                } catch {}
+            }
+        }
+    }
+
+    # 2. Verificar en la consola si está activo globalmente (PATH)
+    if (Get-Command java -ErrorAction SilentlyContinue) {
+        $VersionOutput = & java -version 2>&1 | Out-String
+        if ($VersionOutput -match "version `"$MajorVersion\.") {
+            return (Get-Command java).Source
+        }
+    }
+
+    return $null
+}
+
+function Ensure-JavaEnvironments {
+    Write-Log "Verificando entornos Java (18 y 21)..." "INFO"
+
+    # --- VERIFICACIÓN / INSTALACIÓN DE JAVA 18 ---
+    $Java18Path = Get-InstalledJavaPath -MajorVersion 18
+    if ($null -ne $Java18Path) {
+        Write-Host "  [OK] Java 18 detectado en: $Java18Path" -ForegroundColor Green
+        Write-Log "Java 18 ya presente en el sistema." "SUCCESS"
+    } else {
+        Write-Host "  Java 18 no detectado. Descargando e instalando..." -ForegroundColor Yellow
+        $InstallerJava18 = Join-Path $WorkDir "jdk18_setup.exe"
+        Invoke-SecureDownload -Url $Downloads["Java18"] -DestinationPath $InstallerJava18 -FileName "Java 18 Installer"
+        
+        Write-Log "Instalando Java 18 silenciosamente..." "INFO"
+        Start-Process -FilePath $InstallerJava18 -ArgumentList "/s" -Wait
+        $Java18Path = Get-InstalledJavaPath -MajorVersion 18
+    }
+
+    # --- VERIFICACIÓN / INSTALACIÓN DE JAVA 21 ---
+    $Java21Path = Get-InstalledJavaPath -MajorVersion 21
+    if ($null -ne $Java21Path) {
+        Write-Host "  [OK] Java 21 detectado en: $Java21Path" -ForegroundColor Green
+        Write-Log "Java 21 ya presente en el sistema." "SUCCESS"
+    } else {
+        Write-Host "  Java 21 no detectado. Descargando e instalando..." -ForegroundColor Yellow
+        $InstallerJava21 = Join-Path $WorkDir "jdk21_setup.exe"
+        Invoke-SecureDownload -Url $Downloads["Java21"] -DestinationPath $InstallerJava21 -FileName "Java 21 Installer"
+        
+        Write-Log "Instalando Java 21 silenciosamente..." "INFO"
+        Start-Process -FilePath $InstallerJava21 -ArgumentList "/s" -Wait
+        $Java21Path = Get-InstalledJavaPath -MajorVersion 21
+    }
+
+    return $Java18Path
+}
+
+# -----------------------------------------------------------------
+# FLUJO DE VERIFICACIÓN E INSTALACIÓN DE SKLAUNCHER
 # -----------------------------------------------------------------
 function Deploy-SKLauncherAndWait {
     Write-Log "Descargando e instalando SKLauncher automáticamente..." "INFO"
@@ -170,43 +245,41 @@ function Deploy-SKLauncherAndWait {
     $InstallerDest = Join-Path $WorkDir "SKlauncher_Setup.exe"
     $Downloaded = $false
 
-    # 1. Intentar el ejecutable de tu Release
+    # 1. Intentar con el instalador .exe
     try {
         Invoke-SecureDownload -Url $Downloads["SKLauncherExe"] -DestinationPath $InstallerDest -FileName "Instalador SKLauncher (.exe)"
         $Downloaded = $true
     }
     catch {
-        Write-Log "Aviso: No se pudo bajar el .exe. Intentando bajar .jar..." "WARN"
+        Write-Log "Aviso: No se pudo bajar el .exe. Intentando descargar versión .jar..." "WARN"
     }
 
-    # 2. Si no bajó el ejecutable, descargar el .jar oficial
+    # 2. Descargar el .jar si no se pudo bajar el ejecutable
     if (-not $Downloaded) {
         try {
             Invoke-SecureDownload -Url $Downloads["SKLauncherJarOfficial"] -DestinationPath $SKLauncherJarPath -FileName "SKLauncher Oficial (.jar)"
-            Write-Host "  ¡SKLauncher (.jar) descargado y listo!" -ForegroundColor Green
+            Write-Host "  ¡SKLauncher (.jar) descargado e instalado!" -ForegroundColor Green
             return
         }
         catch {
-            # 3. Descargar el .jar directo de tu repositorio
             try {
                 Invoke-SecureDownload -Url $Downloads["SKLauncherJar"] -DestinationPath $SKLauncherJarPath -FileName "SKLauncher Backup (.jar)"
-                Write-Host "  ¡SKLauncher (.jar) descargado y listo!" -ForegroundColor Green
+                Write-Host "  ¡SKLauncher (.jar) descargado e instalado!" -ForegroundColor Green
                 return
             }
             catch {
-                Write-Log "Error crítico: Fallaron todas las opciones de descarga de SKLauncher." "ERROR"
+                Write-Log "Error crítico: No se pudo bajar SKLauncher de ninguna fuente." "ERROR"
                 throw $_
             }
         }
     }
 
-    # Ejecución silenciosa si bajó el ejecutable
+    # 3. Ejecutar el instalador descargado
     if (Test-Path $InstallerDest) {
         try {
             Write-Log "Ejecutando instalador de SKLauncher..." "INFO"
             Start-Process -FilePath $InstallerDest -Wait
 
-            # Esperar a que quede instalado el .jar
             $Timeout = 60
             $Elapsed = 0
             while ($Elapsed -lt $Timeout) {
@@ -259,7 +332,7 @@ function Check-InitialLauncherSetup {
 }
 
 # -----------------------------------------------------------------
-# RESTO DE OPCIONES (RAM, CONFIGURACIONES DE PERFIL Y FLUJOS)
+# CONFIGURACIÓN DE MEMORIA RAM Y PERFILES DE LAUNCHER
 # -----------------------------------------------------------------
 function Get-UserRamChoice {
     $TotalRamGB = [Math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
@@ -379,28 +452,6 @@ function Configure-SKLauncherProfile {
     [System.IO.File]::WriteAllText($SKJsonPath, (ConvertTo-Json $ProfilesStructure -Depth 10), (New-Object System.Text.UTF8Encoding($false)))
 }
 
-function Get-Java18Binary {
-    foreach ($Folder in @("$env:ProgramFiles\Java", "${env:ProgramFiles(x86)}\Java", "$env:ProgramFiles\Eclipse Foundation")) {
-        if (Test-Path $Folder) {
-            foreach ($Exe in (Get-ChildItem -Path $Folder -Filter "java.exe" -Recurse -ErrorAction SilentlyContinue)) {
-                if ([System.Diagnostics.FileVersionInfo]::GetVersionInfo($Exe.FullName).ProductVersion -match "^18\.") { return $Exe.FullName }
-            }
-        }
-    }
-    return $null
-}
-
-function Ensure-Java18Environment {
-    $JavaPath = Get-Java18Binary
-    if ($null -eq $JavaPath) {
-        $LocalJavaExe = Join-Path $WorkDir "jdk18_installer.exe"
-        Invoke-SecureDownload -Url $Downloads["Java18"] -DestinationPath $LocalJavaExe -FileName "Java 18"
-        Start-Process -FilePath $LocalJavaExe -ArgumentList "/s" -Wait
-        $JavaPath = Get-Java18Binary
-    }
-    return $JavaPath
-}
-
 function Ensure-ForgeEnvironment {
     Param([string]$JavaExecutable)
     if (Test-Path (Join-Path $VersionsDir $ForgeTargetID)) {
@@ -418,11 +469,19 @@ function Clean-ModpackDirectories {
     }
 }
 
+# -----------------------------------------------------------------
+# TRABAJOS Y OPERACIONES PRINCIPALES
+# -----------------------------------------------------------------
 function Invoke-FullInstallation {
     $ChosenRam = Get-UserRamChoice
     Initialize-Environment
-    $JavaPath = Ensure-Java18Environment
-    Ensure-ForgeEnvironment -JavaExecutable $JavaPath
+    
+    # Comprueba e instala Java 18 y Java 21 solo si faltan
+    $Java18Exe = Ensure-JavaEnvironments
+    
+    # Instalar Forge con Java 18
+    Ensure-ForgeEnvironment -JavaExecutable $Java18Exe
+    
     Clean-ModpackDirectories
 
     foreach ($Pkg in @("Mods", "Config", "Defaultconfigs", "KubeJS", "Resourcepacks", "Shaderpacks")) {
@@ -474,7 +533,7 @@ function Show-MainMenu {
     Write-Host ""
     Write-Host "  [3] Reparar (Borrado completo y reinstalación limpia)" -ForegroundColor White
     Write-Host ""
-    Write-Host "  [4] Desinstalar (Elimina el modpack y perfiles de forma segura)" -ForegroundColor White
+    Write-Host "  [4] Desinstalar (Elimina el modpack de forma segura)" -ForegroundColor White
     Write-Host ""
     Write-Host "  [5] Abrir Carpeta .minecraft" -ForegroundColor White
     Write-Host ""
