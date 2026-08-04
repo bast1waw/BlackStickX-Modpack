@@ -36,20 +36,19 @@ $UpdateFolders = @("mods", "config")
 
 # Manifiesto de URLs de descarga
 $Downloads = @{
-    "Config"                 = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/config.zip";
-    "Defaultconfigs"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/defaultconfigs.zip";
-    "Forge"                  = "https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.22/forge-1.20.1-47.4.22-installer.jar";
-    "Java18"                 = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/jdk-18.0.2.1_windows-x64_bin.exe";
-    "Java21"                 = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/jdk-21.0.11_windows-x64_bin.exe";
-    "KubeJS"                 = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/kubejs.zip";
-    "Manifest"               = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/manifest.json";
-    "Mods"                   = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/mods.zip";
-    "Resourcepacks"          = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/resourcepacks.zip";
-    "ServersDat"             = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/servers.dat";
-    "Shaderpacks"            = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/shaderpacks.zip";
-    "SKLauncherJar"          = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18.jar";
-    "SKLauncherExe"          = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18_Setup.exe";
-    "SKLauncherJarOfficial"  = "https://github.com/skmedix/sklauncher/releases/latest/download/SKlauncher.jar"
+    "Config"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/config.zip";
+    "Defaultconfigs" = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/defaultconfigs.zip";
+    "Forge"          = "https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.22/forge-1.20.1-47.4.22-installer.jar";
+    "Java18"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/jdk-18.0.2.1_windows-x64_bin.exe";
+    "Java21"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/jdk-21.0.11_windows-x64_bin.exe";
+    "KubeJS"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/kubejs.zip";
+    "Manifest"       = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/manifest.json";
+    "Mods"           = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/mods.zip";
+    "Resourcepacks"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/resourcepacks.zip";
+    "ServersDat"     = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/servers.dat";
+    "Shaderpacks"    = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/shaderpacks.zip";
+    "SKLauncherJar"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18.jar";
+    "SKLauncherExe"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18_Setup.exe"
 }
 
 # -----------------------------------------------------------------
@@ -225,46 +224,27 @@ function Check-InitialLauncherSetup {
 }
 
 function Deploy-SKLauncherAndWait {
-    Write-Log "Verificando o descargando SKLauncher..." "INFO"
-    if (-not (Test-Path $SKLauncherDir)) {
-        New-Item -ItemType Directory -Path $SKLauncherDir | Out-Null
-    }
-    
+    Write-Log "Descargando instalador de SKLauncher..." "INFO"
     $InstallerDest = Join-Path $WorkDir "SKlauncher_Setup.exe"
-    $DownloadedSuccessfully = $false
     
-    # 1. Intentar descarga mediante Invoke-WebRequest moderno
     try {
-        Write-Log "Intentando descarga desde repositorio..." "INFO"
-        Invoke-WebRequest -Uri $Downloads["SKLauncherExe"] -OutFile $InstallerDest -UseBasicParsing
-        $DownloadedSuccessfully = $true
+        Invoke-SecureDownload -Url $Downloads["SKLauncherExe"] -DestinationPath $InstallerDest -FileName "Instalador de SKLauncher"
+        Start-Process -FilePath $InstallerDest -Wait
+
+        $TimeoutSeconds = 600
+        $Elapsed = 0
+
+        while ($Elapsed -lt $TimeoutSeconds) {
+            if (Test-Path $SKLauncherJarPath) {
+                Write-Host "  ¡SKLauncher detectado con éxito!" -ForegroundColor Green
+                return
+            }
+            Start-Sleep -Seconds 4
+            $Elapsed += 4
+        }
     }
     catch {
-        Write-Log "No se pudo descargar el instalador del repositorio. Intentando el JAR oficial..." "WARN"
-        try {
-            Invoke-WebRequest -Uri $Downloads["SKLauncherJarOfficial"] -OutFile $SKLauncherJarPath -UseBasicParsing
-            Write-Host "  ¡SKLauncher descargado con éxito!" -ForegroundColor Green
-            return
-        }
-        catch {
-            Write-Log "Aviso: Descarga automatizada bloqueada por red o GitHub." "WARN"
-        }
-    }
-
-    # 2. Si todo lo automático falla, abrir navegador para descarga manual asistida
-    if (-not (Test-Path $SKLauncherJarPath) -and -not $DownloadedSuccessfully) {
-        Write-Host "`n  [AVISO] Tu red bloqueó la descarga automática." -ForegroundColor Yellow
-        Write-Host "  Se abrirá la página oficial para descargar SKLauncher manualmente." -ForegroundColor White
-        Start-Process "https://skmedix.pl/downloads"
-        
-        Write-Host "  Coloca el archivo 'SKlauncher.jar' en esta ruta: $SKLauncherDir" -ForegroundColor Cyan
-        Read-Host "  Presiona [Enter] cuando ya lo hayas descargado y colocado para continuar..."
-    }
-
-    if (Test-Path $InstallerDest) {
-        try {
-            Start-Process -FilePath $InstallerDest -Wait
-        } catch {}
+        Write-Log "Error al gestionar la instalación de SKLauncher: $_" "ERROR"
     }
 }
 
