@@ -11,7 +11,7 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
-# Cabecera de navegador real para evitar bloqueos y rechazo de conexiones por parte de GitHub
+# Cabecera de navegador real
 $Global:UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 # -----------------------------------------------------------------
@@ -82,13 +82,15 @@ function Write-Log {
 function Initialize-Environment {
     Write-Log "Inicializando directorios de trabajo..." "INFO"
     if (-not (Test-Path $MinecraftDir)) {
-        New-Item -ItemType Directory -Path $MinecraftDir | Out-Null
+        New-Item -ItemType Directory -Path $MinecraftDir -Force | Out-Null
         Write-Log "Directorio base creado: $MinecraftDir" "INFO"
     }
-    if (Test-Path $WorkDir) {
-        Remove-Item -Path $WorkDir -Recurse -Force -ErrorAction SilentlyContinue
+    if (-not (Test-Path $WorkDir)) {
+        New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
     }
-    New-Item -ItemType Directory -Path $WorkDir | Out-Null
+    if (-not (Test-Path $SKLauncherDir)) {
+        New-Item -ItemType Directory -Path $SKLauncherDir -Force | Out-Null
+    }
 }
 
 function Invoke-SecureDownload {
@@ -100,7 +102,12 @@ function Invoke-SecureDownload {
     Write-Log "Descargando $FileName..." "INFO"
     
     try {
-        # Se utiliza Invoke-WebRequest con un User-Agent explícito para evitar bloqueos de red o de GitHub
+        # Asegurar que el directorio destino exista antes de descargar
+        $ParentFolder = Split-Path $DestinationPath -Parent
+        if (-not (Test-Path $ParentFolder)) {
+            New-Item -ItemType Directory -Path $ParentFolder -Force | Out-Null
+        }
+
         $OldProgressPreference = $ProgressPreference
         $ProgressPreference = 'SilentlyContinue'
 
@@ -124,13 +131,13 @@ function Safe-ExtractArchive {
     Write-Log "Extrayendo paquete $(Split-Path $ZipPath -Leaf)..." "INFO"
     try {
         if (-not (Test-Path $ExtractLocation)) {
-            New-Item -ItemType Directory -Path $ExtractLocation | Out-Null
+            New-Item -ItemType Directory -Path $ExtractLocation -Force | Out-Null
         }
         
         if ($IsShaderpack) {
             $TempExtractDir = Join-Path $WorkDir "temp_shaders_extract"
             if (Test-Path $TempExtractDir) { Remove-Item $TempExtractDir -Recurse -Force }
-            New-Item -ItemType Directory -Path $TempExtractDir | Out-Null
+            New-Item -ItemType Directory -Path $TempExtractDir -Force | Out-Null
 
             if (Get-Command Expand-Archive -ErrorAction SilentlyContinue) {
                 Expand-Archive -Path $ZipPath -DestinationPath $TempExtractDir -Force
@@ -165,6 +172,9 @@ function Safe-ExtractArchive {
 
 function Check-InitialLauncherSetup {
     Clear-Host
+    # Garantizar que el entorno de carpetas exista desde el primer segundo
+    Initialize-Environment
+
     Write-Host "====================================================================" -ForegroundColor Cyan
     Write-Host "                  VERIFICACIÓN INICIAL DE CUENTA                    " -ForegroundColor Cyan
     Write-Host "====================================================================" -ForegroundColor Cyan
@@ -214,7 +224,7 @@ function Check-InitialLauncherSetup {
             Write-Host "  SKLauncher detectado en: $SKLauncherJarPath" -ForegroundColor Green
             Write-Log "SKLauncher detectado en: $SKLauncherJarPath" "SUCCESS"
         } else {
-            Write-Host "  SKLauncher no encontrado. Procediendo a instalarlo..." -ForegroundColor Yellow
+            Write-Host "  SKLauncher no encontrado. Iniciando instalador..." -ForegroundColor Yellow
             Deploy-SKLauncherAndWait
         }
     }
@@ -224,58 +234,59 @@ function Check-InitialLauncherSetup {
 }
 
 function Deploy-SKLauncherAndWait {
-    Write-Log "Descargando e instalando SKLauncher de forma automática..." "INFO"
-    if (-not (Test-Path $SKLauncherDir)) {
-        New-Item -ItemType Directory -Path $SKLauncherDir | Out-Null
-    }
+    Write-Log "Iniciando despliegue de SKLauncher..." "INFO"
     
     $InstallerDest = Join-Path $WorkDir "SKlauncher_Setup.exe"
-    $DownloadedSuccessfully = $false
-    
-    # 1. Intentar descargar el instalador .exe del repositorio usando la sesión segura
+    $Downloaded = $false
+
+    # 1. Intentar descargar el instalador .exe
     try {
-        Invoke-SecureDownload -Url $Downloads["SKLauncherExe"] -DestinationPath $InstallerDest -FileName "Instalador SKLauncher (.exe)"
-        $DownloadedSuccessfully = $true
-    }
-    catch {
-        Write-Log "Aviso: No se pudo descargar el .exe del repositorio. Intentando bajar el .jar oficial directamente..." "WARN"
-    }
-
-    # 2. Si falla el .exe, descargar el .jar oficial directamente a la carpeta de SKLauncher
-    if (-not $DownloadedSuccessfully) {
-        try {
-            Invoke-SecureDownload -Url $Downloads["SKLauncherJarOfficial"] -DestinationPath $SKLauncherJarPath -FileName "SKLauncher Oficial (.jar)"
-            Write-Host "  ¡SKLauncher descargado y listo!" -ForegroundColor Green
-            return
-        }
-        catch {
-            Write-Log "Error crítico: No se pudo descargar SKLauncher de ninguna fuente." "ERROR"
-            throw $_
-        }
+        Invoke-SecureDownload -Url $Downloads["SKLauncherExe"] -DestinationPath $InstallerDest -FileName "Instalador SKLauncher"
+        $Downloaded = $true
+    } catch {
+        Write-Log "Aviso: No se pudo descargar el instalador desde el repositorio." "WARN"
     }
 
-    # 3. Ejecutar el instalador descargado
+    # 2. Si falla la descarga por consola, abrir el navegador para descargar sin errores
+    if (-not $Downloaded) {
+        Write-Host "`n  Abriendo la descarga de SKLauncher en tu navegador..." -ForegroundColor Yellow
+        Start-Process $Downloads["SKLauncherExe"]
+        
+        Write-Host "  Instala SKLauncher o coloca el ejecutable descargado en la pantalla." -ForegroundColor White
+        Write-Host "  Esperando a que la carpeta 'sklauncher' sea creada..." -ForegroundColor Cyan
+
+        # Esperar activamente a que el usuario complete el instalador
+        $Timeout = 300
+        $Timer = 0
+        while ($Timer -lt $Timeout) {
+            if (Test-Path $SKLauncherJarPath) {
+                Write-Host "  ¡SKLauncher instalado correctamente!" -ForegroundColor Green
+                return
+            }
+            Start-Sleep -Seconds 3
+            $Timer += 3
+        }
+    }
+
+    # 3. Si se descargó el instalador por consola, ejecutarlo
     if (Test-Path $InstallerDest) {
         try {
             Write-Log "Ejecutando instalador de SKLauncher..." "INFO"
             Start-Process -FilePath $InstallerDest -Wait
 
-            # Esperar a que el instalador genere el archivo .jar en %appdata%\sklauncher
-            $TimeoutSeconds = 300
-            $Elapsed = 0
-
-            while ($Elapsed -lt $TimeoutSeconds) {
+            # Esperar a que el instalador cree la carpeta y el JAR
+            $Timeout = 300
+            $Timer = 0
+            while ($Timer -lt $Timeout) {
                 if (Test-Path $SKLauncherJarPath) {
                     Write-Host "  ¡SKLauncher instalado e identificado con éxito!" -ForegroundColor Green
                     return
                 }
                 Start-Sleep -Seconds 3
-                $Elapsed += 3
+                $Timer += 3
             }
-        }
-        catch {
-            Write-Log "Error al ejecutar el instalador de SKLauncher: $_" "ERROR"
-            throw $_
+        } catch {
+            Write-Log "Error al ejecutar el instalador: $_" "ERROR"
         }
     }
 }
@@ -398,7 +409,7 @@ function Configure-OfficialLauncherProfile {
         $JsonString = ConvertTo-Json $JsonObject -Depth 10
         
         $ParentDir = Split-Path $ProfilesJsonPath -Parent
-        if (-not (Test-Path $ParentDir)) { New-Item -ItemType Directory -Path $ParentDir | Out-Null }
+        if (-not (Test-Path $ParentDir)) { New-Item -ItemType Directory -Path $ParentDir -Force | Out-Null }
 
         [System.IO.File]::WriteAllText($ProfilesJsonPath, $JsonString, $Utf8NoBom)
         Write-Log "Perfil 'blackstickx' actualizado con icono y configurado." "SUCCESS"
@@ -416,7 +427,7 @@ function Configure-SKLauncherProfile {
     $SKDir = Join-Path $env:APPDATA "sklauncher"
     $SKJsonPath = Join-Path $SKDir "profiles.json"
 
-    if (-not (Test-Path $SKDir)) { New-Item -ItemType Directory -Path $SKDir | Out-Null }
+    if (-not (Test-Path $SKDir)) { New-Item -ItemType Directory -Path $SKDir -Force | Out-Null }
 
     $RamInMB = [int]($SelectedRamGB * 1024)
     $TargetProfileId = "profile-blackstickx-modpack"
