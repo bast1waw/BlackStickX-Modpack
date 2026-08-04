@@ -36,21 +36,22 @@ $UpdateFolders = @("mods", "config")
 
 # Manifiesto de URLs de descarga (Repositorio y Oficiales como fallback)
 $Downloads = @{
-    "Config"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/config.zip";
-    "Defaultconfigs" = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/defaultconfigs.zip";
-    "Forge"          = "https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.22/forge-1.20.1-47.4.22-installer.jar";
-    "Java18Repo"     = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/jdk-18.0.2.1_windows-x64_bin.exe";
-    "Java18Official" = "https://download.oracle.com/java/18/archive/jdk-18.0.2.1_windows-x64_bin.exe";
-    "Java21Repo"     = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/jdk-21.0.11_windows-x64_bin.exe";
-    "Java21Official" = "https://download.oracle.com/java/21/archive/jdk-21.0.11_windows-x64_bin.exe";
-    "KubeJS"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/kubejs.zip";
-    "Manifest"       = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/manifest.json";
-    "Mods"           = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/mods.zip";
-    "Resourcepacks"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/resourcepacks.zip";
-    "ServersDat"     = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/servers.dat";
-    "Shaderpacks"    = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/shaderpacks.zip";
-    "SKLauncherJar"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18.jar";
-    "SKLauncherExe"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18_Setup.exe"
+    "Config"                  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/config.zip";
+    "Defaultconfigs"          = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/defaultconfigs.zip";
+    "Forge"                   = "https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.22/forge-1.20.1-47.4.22-installer.jar";
+    "Java18Repo"              = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/jdk-18.0.2.1_windows-x64_bin.exe";
+    "Java18Official"          = "https://download.oracle.com/java/18/archive/jdk-18.0.2.1_windows-x64_bin.exe";
+    "Java21Repo"              = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/jdk-21.0.11_windows-x64_bin.exe";
+    "Java21Official"          = "https://download.oracle.com/java/21/archive/jdk-21.0.11_windows-x64_bin.exe";
+    "KubeJS"                  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/kubejs.zip";
+    "Manifest"                = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/manifest.json";
+    "Mods"                    = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/mods.zip";
+    "Resourcepacks"           = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/resourcepacks.zip";
+    "ServersDat"              = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/servers.dat";
+    "Shaderpacks"             = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/shaderpacks.zip";
+    "SKLauncherJar"           = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18.jar";
+    "SKLauncherExeRepo"       = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18_Setup.exe";
+    "SKLauncherExeOfficial"   = "https://skoocloud.org/sks/get/latest/win"
 }
 
 # -----------------------------------------------------------------
@@ -230,7 +231,20 @@ function Deploy-SKLauncherAndWait {
     $InstallerDest = Join-Path $WorkDir "SKlauncher_Setup.exe"
     
     try {
-        Invoke-SecureDownload -Url $Downloads["SKLauncherExe"] -DestinationPath $InstallerDest -FileName "Instalador de SKLauncher"
+        Invoke-SecureDownload -Url $Downloads["SKLauncherExeRepo"] -DestinationPath $InstallerDest -FileName "Instalador de SKLauncher (Repositorio)"
+    }
+    catch {
+        Write-Log "Fallo la descarga desde el repositorio. Intentando desde la fuente oficial..." "WARN"
+        try {
+            Invoke-SecureDownload -Url $Downloads["SKLauncherExeOfficial"] -DestinationPath $InstallerDest -FileName "Instalador de SKLauncher (Oficial)"
+        }
+        catch {
+            Write-Log "Error crítico: No se pudo descargar SKLauncher de ninguna fuente." "ERROR"
+            throw $_
+        }
+    }
+
+    try {
         Start-Process -FilePath $InstallerDest -Wait
 
         $TimeoutSeconds = 600
@@ -246,7 +260,7 @@ function Deploy-SKLauncherAndWait {
         }
     }
     catch {
-        Write-Log "Error al gestionar la instalación de SKLauncher: $_" "ERROR"
+        Write-Log "Error al ejecutar el instalador de SKLauncher: $_" "ERROR"
     }
 }
 
@@ -464,9 +478,8 @@ function Verify-And-Install-Java {
         Write-Log "Java 18 ya se encuentra instalado." "SUCCESS"
     }
 
-    # 2. Verificar y gestionar Java 21 (Nota: usando la ruta que indicaste o general de jdk-21)
+    # 2. Verificar y gestionar Java 21
     $Java21Path = "C:\Program Files\Java\jdk-21\bin\java.exe"
-    # Si especificaste jdk-22 en tu ejemplo pero pides Java 21, contemplamos ambas opciones de ruta común:
     $AlternativeJava21Path = "C:\Program Files\Java\jdk-22\bin\java.exe"
     
     if (-not (Test-Path $Java21Path) -and -not (Test-Path $AlternativeJava21Path)) {
@@ -484,7 +497,6 @@ function Verify-And-Install-Java {
         Write-Log "Java 21 ya se encuentra instalado." "SUCCESS"
     }
 
-    # Retornar la ruta de Java 18 para la instalación de Forge
     if (Test-Path $Java18Path) {
         return $Java18Path
     } else {
@@ -536,7 +548,6 @@ function Invoke-FullInstallation {
 function Invoke-UpdateWorkflow {
     $ChosenRam = Get-UserRamChoice
     Initialize-Environment
-    # Verificar java también durante la actualización por seguridad
     Verify-And-Install-Java | Out-Null
     
     foreach ($Folder in $UpdateFolders) {
