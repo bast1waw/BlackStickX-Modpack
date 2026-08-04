@@ -225,7 +225,7 @@ function Check-InitialLauncherSetup {
 }
 
 function Deploy-SKLauncherAndWait {
-    Write-Log "Descargando instalador de SKLauncher..." "INFO"
+    Write-Log "Verificando o descargando SKLauncher..." "INFO"
     if (-not (Test-Path $SKLauncherDir)) {
         New-Item -ItemType Directory -Path $SKLauncherDir | Out-Null
     }
@@ -233,47 +233,38 @@ function Deploy-SKLauncherAndWait {
     $InstallerDest = Join-Path $WorkDir "SKlauncher_Setup.exe"
     $DownloadedSuccessfully = $false
     
-    # 1. Intentar descargar desde el repositorio del usuario
+    # 1. Intentar descarga mediante Invoke-WebRequest moderno
     try {
-        Invoke-SecureDownload -Url $Downloads["SKLauncherExe"] -DestinationPath $InstallerDest -FileName "Instalador de SKLauncher (Repositorio)"
+        Write-Log "Intentando descarga desde repositorio..." "INFO"
+        Invoke-WebRequest -Uri $Downloads["SKLauncherExe"] -OutFile $InstallerDest -UseBasicParsing
         $DownloadedSuccessfully = $true
     }
     catch {
-        Write-Log "Aviso: No se pudo descargar desde el repositorio de GitHub (el archivo puede no existir o falló la red)." "WARN"
-    }
-
-    # 2. Si falla el repositorio, descargar el JAR oficial directamente a su ruta final
-    if (-not $DownloadedSuccessfully) {
-        Write-Log "Descargando SKLauncher oficial directamente..." "WARN"
+        Write-Log "No se pudo descargar el instalador del repositorio. Intentando el JAR oficial..." "WARN"
         try {
-            Invoke-SecureDownload -Url $Downloads["SKLauncherJarOfficial"] -DestinationPath $SKLauncherJarPath -FileName "SKLauncher Oficial (.jar)"
-            Write-Host "  ¡SKLauncher descargado y listo!" -ForegroundColor Green
+            Invoke-WebRequest -Uri $Downloads["SKLauncherJarOfficial"] -OutFile $SKLauncherJarPath -UseBasicParsing
+            Write-Host "  ¡SKLauncher descargado con éxito!" -ForegroundColor Green
             return
         }
         catch {
-            Write-Log "Error crítico: No se pudo descargar SKLauncher de ninguna fuente disponible." "ERROR"
-            throw $_
+            Write-Log "Aviso: Descarga automatizada bloqueada por red o GitHub." "WARN"
         }
     }
 
-    # Si se descargó el .exe del repositorio con éxito, ejecutarlo
-    try {
-        Start-Process -FilePath $InstallerDest -Wait
-
-        $TimeoutSeconds = 600
-        $Elapsed = 0
-
-        while ($Elapsed -lt $TimeoutSeconds) {
-            if (Test-Path $SKLauncherJarPath) {
-                Write-Host "  ¡SKLauncher detectado con éxito!" -ForegroundColor Green
-                return
-            }
-            Start-Sleep -Seconds 4
-            $Elapsed += 4
-        }
+    # 2. Si todo lo automático falla, abrir navegador para descarga manual asistida
+    if (-not (Test-Path $SKLauncherJarPath) -and -not $DownloadedSuccessfully) {
+        Write-Host "`n  [AVISO] Tu red bloqueó la descarga automática." -ForegroundColor Yellow
+        Write-Host "  Se abrirá la página oficial para descargar SKLauncher manualmente." -ForegroundColor White
+        Start-Process "https://skmedix.pl/downloads"
+        
+        Write-Host "  Coloca el archivo 'SKlauncher.jar' en esta ruta: $SKLauncherDir" -ForegroundColor Cyan
+        Read-Host "  Presiona [Enter] cuando ya lo hayas descargado y colocado para continuar..."
     }
-    catch {
-        Write-Log "Error al ejecutar el instalador de SKLauncher: $_" "ERROR"
+
+    if (Test-Path $InstallerDest) {
+        try {
+            Start-Process -FilePath $InstallerDest -Wait
+        } catch {}
     }
 }
 
