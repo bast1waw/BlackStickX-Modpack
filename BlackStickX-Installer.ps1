@@ -11,6 +11,9 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
+# Cabecera de navegador real para evitar bloqueos y rechazo de conexiones por parte de GitHub
+$Global:UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
 # -----------------------------------------------------------------
 # RUTAS GLOBALES Y CONFIGURACIÓN
 # -----------------------------------------------------------------
@@ -25,7 +28,7 @@ $ForgeTargetID        = "1.20.1-forge-47.4.22"
 $LogPath              = Join-Path $env:TEMP "BlackStickXInstaller.log"
 $WorkDir              = Join-Path $env:TEMP "BlackStickX_Setup"
 
-# Icono del Perfil en Base64 Corregido
+# Icono del Perfil en Base64
 $IconBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAMnUlEQVR4nO2dC1QVxxnH/xcBSQRqFCMQVEDSJqk2SKFiGqOoaVNraxKssagnJCcnsac1SdPq0WhOW09jajRRT2xz0oj4rG+tMa1RtDWW1hqi+AYfhYgiKCi+BbyX6RnugPexO7vAvXt378zvnPFxd3Z39vu+ncc3M99CIpFIJBKJRCKRSCQiYQuSZ30CwA8BpALoBoCw5EkogOsASgGUA/gKQCWAowCuBPYRJO3hUQB/c1F4e9NlALSvH4A6oE8AkO4+ACD8/23D3wQ46K3eAcB6APUANB3rWwMAgP9nAMgAK9d+B4D07+N5AADlXJ8HAHBeNwCgAODP43vP6H4A9n77/gBAt4b/A/CBAAD091V73hYAAIAbwP8A4P3+AgAAwP8PAIAwBwEAAMjH34c/3gDAh7W/BQAARAB4ACrLq0oWAAAAAElFTkSuQmCC"
 
 # Directorios principales del modpack para gestionar
@@ -36,19 +39,20 @@ $UpdateFolders = @("mods", "config")
 
 # Manifiesto de URLs de descarga
 $Downloads = @{
-    "Config"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/config.zip";
-    "Defaultconfigs" = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/defaultconfigs.zip";
-    "Forge"          = "https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.22/forge-1.20.1-47.4.22-installer.jar";
-    "Java18"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/jdk-18.0.2.1_windows-x64_bin.exe";
-    "Java21"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/jdk-21.0.11_windows-x64_bin.exe";
-    "KubeJS"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/kubejs.zip";
-    "Manifest"       = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/manifest.json";
-    "Mods"           = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/mods.zip";
-    "Resourcepacks"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/resourcepacks.zip";
-    "ServersDat"     = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/servers.dat";
-    "Shaderpacks"    = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/shaderpacks.zip";
-    "SKLauncherJar"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18.jar";
-    "SKLauncherExe"  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18_Setup.exe"
+    "Config"                 = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/config.zip";
+    "Defaultconfigs"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/defaultconfigs.zip";
+    "Forge"                  = "https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.22/forge-1.20.1-47.4.22-installer.jar";
+    "Java18"                 = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/jdk-18.0.2.1_windows-x64_bin.exe";
+    "Java21"                 = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/jdk-21.0.11_windows-x64_bin.exe";
+    "KubeJS"                 = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/kubejs.zip";
+    "Manifest"               = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/manifest.json";
+    "Mods"                   = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/mods.zip";
+    "Resourcepacks"          = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/resourcepacks.zip";
+    "ServersDat"             = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/servers.dat";
+    "Shaderpacks"            = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/shaderpacks.zip";
+    "SKLauncherJar"          = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18.jar";
+    "SKLauncherExe"          = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18_Setup.exe";
+    "SKLauncherJarOfficial"  = "https://github.com/skmedix/sklauncher/releases/latest/download/SKlauncher.jar"
 }
 
 # -----------------------------------------------------------------
@@ -73,7 +77,7 @@ function Write-Log {
 }
 
 # -----------------------------------------------------------------
-# FUNCIONES PRINCIPALES DE UTILIDAD Y DETECCIÓN EXACTA
+# FUNCIONES PRINCIPALES DE UTILIDAD Y DESCARGA SEGURA
 # -----------------------------------------------------------------
 function Initialize-Environment {
     Write-Log "Inicializando directorios de trabajo..." "INFO"
@@ -95,21 +99,17 @@ function Invoke-SecureDownload {
     )
     Write-Log "Descargando $FileName..." "INFO"
     
-    $WebClient = $null
     try {
+        # Se utiliza Invoke-WebRequest con un User-Agent explícito para evitar bloqueos de red o de GitHub
         $OldProgressPreference = $ProgressPreference
         $ProgressPreference = 'SilentlyContinue'
 
-        $WebClient = New-Object System.Net.WebClient
-        $WebClient.DownloadFile($Url, $DestinationPath)
+        Invoke-WebRequest -Uri $Url -OutFile $DestinationPath -UserAgent $Global:UserAgent -UseBasicParsing -ErrorAction Stop
         
         $ProgressPreference = $OldProgressPreference
-        $WebClient.Dispose()
-        
         Write-Log "Descarga completada: $FileName" "SUCCESS"
     }
     catch {
-        if ($WebClient -ne $null) { $WebClient.Dispose() }
         Write-Log "Error al descargar $FileName desde $Url. Detalles: $_" "ERROR"
         throw $_
     }
@@ -224,27 +224,59 @@ function Check-InitialLauncherSetup {
 }
 
 function Deploy-SKLauncherAndWait {
-    Write-Log "Descargando instalador de SKLauncher..." "INFO"
-    $InstallerDest = Join-Path $WorkDir "SKlauncher_Setup.exe"
+    Write-Log "Descargando e instalando SKLauncher de forma automática..." "INFO"
+    if (-not (Test-Path $SKLauncherDir)) {
+        New-Item -ItemType Directory -Path $SKLauncherDir | Out-Null
+    }
     
+    $InstallerDest = Join-Path $WorkDir "SKlauncher_Setup.exe"
+    $DownloadedSuccessfully = $false
+    
+    # 1. Intentar descargar el instalador .exe del repositorio usando la sesión segura
     try {
-        Invoke-SecureDownload -Url $Downloads["SKLauncherExe"] -DestinationPath $InstallerDest -FileName "Instalador de SKLauncher"
-        Start-Process -FilePath $InstallerDest -Wait
-
-        $TimeoutSeconds = 600
-        $Elapsed = 0
-
-        while ($Elapsed -lt $TimeoutSeconds) {
-            if (Test-Path $SKLauncherJarPath) {
-                Write-Host "  ¡SKLauncher detectado con éxito!" -ForegroundColor Green
-                return
-            }
-            Start-Sleep -Seconds 4
-            $Elapsed += 4
-        }
+        Invoke-SecureDownload -Url $Downloads["SKLauncherExe"] -DestinationPath $InstallerDest -FileName "Instalador SKLauncher (.exe)"
+        $DownloadedSuccessfully = $true
     }
     catch {
-        Write-Log "Error al gestionar la instalación de SKLauncher: $_" "ERROR"
+        Write-Log "Aviso: No se pudo descargar el .exe del repositorio. Intentando bajar el .jar oficial directamente..." "WARN"
+    }
+
+    # 2. Si falla el .exe, descargar el .jar oficial directamente a la carpeta de SKLauncher
+    if (-not $DownloadedSuccessfully) {
+        try {
+            Invoke-SecureDownload -Url $Downloads["SKLauncherJarOfficial"] -DestinationPath $SKLauncherJarPath -FileName "SKLauncher Oficial (.jar)"
+            Write-Host "  ¡SKLauncher descargado y listo!" -ForegroundColor Green
+            return
+        }
+        catch {
+            Write-Log "Error crítico: No se pudo descargar SKLauncher de ninguna fuente." "ERROR"
+            throw $_
+        }
+    }
+
+    # 3. Ejecutar el instalador descargado
+    if (Test-Path $InstallerDest) {
+        try {
+            Write-Log "Ejecutando instalador de SKLauncher..." "INFO"
+            Start-Process -FilePath $InstallerDest -Wait
+
+            # Esperar a que el instalador genere el archivo .jar en %appdata%\sklauncher
+            $TimeoutSeconds = 300
+            $Elapsed = 0
+
+            while ($Elapsed -lt $TimeoutSeconds) {
+                if (Test-Path $SKLauncherJarPath) {
+                    Write-Host "  ¡SKLauncher instalado e identificado con éxito!" -ForegroundColor Green
+                    return
+                }
+                Start-Sleep -Seconds 3
+                $Elapsed += 3
+            }
+        }
+        catch {
+            Write-Log "Error al ejecutar el instalador de SKLauncher: $_" "ERROR"
+            throw $_
+        }
     }
 }
 
