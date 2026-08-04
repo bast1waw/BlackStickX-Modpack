@@ -5,9 +5,11 @@
 # =================================================================
 
 $ErrorActionPreference = "Stop"
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-# Prevenir errores de codificación en la consola (Caracteres extraños)
+# Forzar protocolos SSL/TLS modernos para que GitHub no cierre la conexión
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
+
+# Prevenir errores de codificación en la consola
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -31,11 +33,9 @@ $WorkDir              = Join-Path $env:TEMP "BlackStickX_Setup"
 # Icono del Perfil en Base64
 $IconBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAMnUlEQVR4nO2dC1QVxxnH/xcBSQRqFCMQVEDSJqk2SKFiGqOoaVNraxKssagnJCcnsac1SdPq0WhOW09jajRRT2xz0oj4rG+tMa1RtDWW1hqi+AYfhYgiKCi+BbyX6RnugPexO7vAvXt378zvnPFxd3Z39vu+ncc3M99CIpFIJBKJRCKRSCQiYQuSZ30CwA8BpALoBoCw5EkogOsASgGUA/gKQCWAowCuBPYRJO3hUQB/c1F4e9NlALSvH4A6oE8AkO4+ACD8/23D3wQ46K3eAcB6APUANB3rWwMAgP9nAMgAK9d+B4D07+N5AADlXJ8HAHBeNwCgAODP43vP6H4A9n77/gBAt4b/A/CBAAD091V73hYAAIAbwP8A4P3+AgAAwP8PAIAwBwEAAMjH34c/3gDAh7W/BQAARAB4ACrLq0oWAAAAAElFTkSuQmCC"
 
-# Directorios principales del modpack para gestionar
+# Directorios principales del modpack
 $ModpackFolders = @("mods", "config", "defaultconfigs", "kubejs", "resourcepacks", "shaderpacks")
-
-# Objetivos específicos para el subsistema de actualización (Solo Mods y Config)
-$UpdateFolders = @("mods", "config")
+$UpdateFolders  = @("mods", "config")
 
 # Manifiesto de URLs de descarga
 $Downloads = @{
@@ -77,13 +77,12 @@ function Write-Log {
 }
 
 # -----------------------------------------------------------------
-# FUNCIONES PRINCIPALES DE UTILIDAD Y DESCARGA SEGURA
+# FUNCIONES PRINCIPALES
 # -----------------------------------------------------------------
 function Initialize-Environment {
     Write-Log "Inicializando directorios de trabajo..." "INFO"
     if (-not (Test-Path $MinecraftDir)) {
         New-Item -ItemType Directory -Path $MinecraftDir -Force | Out-Null
-        Write-Log "Directorio base creado: $MinecraftDir" "INFO"
     }
     if (-not (Test-Path $WorkDir)) {
         New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
@@ -101,24 +100,33 @@ function Invoke-SecureDownload {
     )
     Write-Log "Descargando $FileName..." "INFO"
     
+    # Crear carpetas contenedoras si no existen
+    $ParentFolder = Split-Path $DestinationPath -Parent
+    if (-not (Test-Path $ParentFolder)) {
+        New-Item -ItemType Directory -Path $ParentFolder -Force | Out-Null
+    }
+
     try {
-        # Asegurar que el directorio destino exista antes de descargar
-        $ParentFolder = Split-Path $DestinationPath -Parent
-        if (-not (Test-Path $ParentFolder)) {
-            New-Item -ItemType Directory -Path $ParentFolder -Force | Out-Null
-        }
-
-        $OldProgressPreference = $ProgressPreference
-        $ProgressPreference = 'SilentlyContinue'
-
-        Invoke-WebRequest -Uri $Url -OutFile $DestinationPath -UserAgent $Global:UserAgent -UseBasicParsing -ErrorAction Stop
+        # Método robusto con WebClient y User-Agent para evitar "Conexión terminada de forma inesperada"
+        $webClient = New-Object System.Net.WebClient
+        $webClient.Headers.Add("User-Agent", $Global:UserAgent)
+        $webClient.DownloadFile($Url, $DestinationPath)
         
-        $ProgressPreference = $OldProgressPreference
         Write-Log "Descarga completada: $FileName" "SUCCESS"
     }
     catch {
-        Write-Log "Error al descargar $FileName desde $Url. Detalles: $_" "ERROR"
-        throw $_
+        # Respando con Invoke-WebRequest si falla WebClient
+        try {
+            $OldProgress = $ProgressPreference
+            $ProgressPreference = 'SilentlyContinue'
+            Invoke-WebRequest -Uri $Url -OutFile $DestinationPath -UserAgent $Global:UserAgent -UseBasicParsing -ErrorAction Stop
+            $ProgressPreference = $OldProgress
+            Write-Log "Descarga completada (método alternativo): $FileName" "SUCCESS"
+        }
+        catch {
+            Write-Log "Error al descargar $FileName desde $Url. Detalles: $_" "ERROR"
+            throw $_
+        }
     }
 }
 
@@ -172,7 +180,7 @@ function Safe-ExtractArchive {
 
 function Check-InitialLauncherSetup {
     Clear-Host
-    # Garantizar que el entorno de carpetas exista desde el primer segundo
+    # Garantizar que las carpetas de trabajo existan ANTES de verificar nada
     Initialize-Environment
 
     Write-Host "====================================================================" -ForegroundColor Cyan
@@ -224,69 +232,73 @@ function Check-InitialLauncherSetup {
             Write-Host "  SKLauncher detectado en: $SKLauncherJarPath" -ForegroundColor Green
             Write-Log "SKLauncher detectado en: $SKLauncherJarPath" "SUCCESS"
         } else {
-            Write-Host "  SKLauncher no encontrado. Iniciando instalador..." -ForegroundColor Yellow
+            Write-Host "  SKLauncher no encontrado. Procediendo a instalarlo automáticamente..." -ForegroundColor Yellow
             Deploy-SKLauncherAndWait
         }
     }
 
-    Write-Host "`n  Verificación completada. Abriendo el instalador..." -ForegroundColor Cyan
+    Write-Host "`n  Verificación completada. Abriendo el menú principal..." -ForegroundColor Cyan
     Start-Sleep -Seconds 2
 }
 
 function Deploy-SKLauncherAndWait {
-    Write-Log "Iniciando despliegue de SKLauncher..." "INFO"
+    Write-Log "Descargando e instalando SKLauncher de forma automática..." "INFO"
     
     $InstallerDest = Join-Path $WorkDir "SKlauncher_Setup.exe"
-    $Downloaded = $false
-
-    # 1. Intentar descargar el instalador .exe
+    $DownloadedSuccessfully = $false
+    
+    # 1. Intentar descargar el instalador .exe del repositorio
     try {
-        Invoke-SecureDownload -Url $Downloads["SKLauncherExe"] -DestinationPath $InstallerDest -FileName "Instalador SKLauncher"
-        $Downloaded = $true
-    } catch {
-        Write-Log "Aviso: No se pudo descargar el instalador desde el repositorio." "WARN"
+        Invoke-SecureDownload -Url $Downloads["SKLauncherExe"] -DestinationPath $InstallerDest -FileName "Instalador SKLauncher (.exe)"
+        $DownloadedSuccessfully = $true
+    }
+    catch {
+        Write-Log "Aviso: No se pudo bajar el .exe. Intentando descargar el .jar oficial de SKLauncher..." "WARN"
     }
 
-    # 2. Si falla la descarga por consola, abrir el navegador para descargar sin errores
-    if (-not $Downloaded) {
-        Write-Host "`n  Abriendo la descarga de SKLauncher en tu navegador..." -ForegroundColor Yellow
-        Start-Process $Downloads["SKLauncherExe"]
-        
-        Write-Host "  Instala SKLauncher o coloca el ejecutable descargado en la pantalla." -ForegroundColor White
-        Write-Host "  Esperando a que la carpeta 'sklauncher' sea creada..." -ForegroundColor Cyan
-
-        # Esperar activamente a que el usuario complete el instalador
-        $Timeout = 300
-        $Timer = 0
-        while ($Timer -lt $Timeout) {
-            if (Test-Path $SKLauncherJarPath) {
-                Write-Host "  ¡SKLauncher instalado correctamente!" -ForegroundColor Green
+    # 2. Si falla el ejecutable, descargar directamente el .jar de SKLauncher
+    if (-not $DownloadedSuccessfully) {
+        try {
+            Invoke-SecureDownload -Url $Downloads["SKLauncherJarOfficial"] -DestinationPath $SKLauncherJarPath -FileName "SKLauncher Oficial (.jar)"
+            Write-Host "  ¡SKLauncher descargado y listo!" -ForegroundColor Green
+            return
+        }
+        catch {
+            # Tercera alternativa directa desde tu propio release del .jar
+            try {
+                Invoke-SecureDownload -Url $Downloads["SKLauncherJar"] -DestinationPath $SKLauncherJarPath -FileName "SKLauncher Backup (.jar)"
+                Write-Host "  ¡SKLauncher descargado y listo!" -ForegroundColor Green
                 return
             }
-            Start-Sleep -Seconds 3
-            $Timer += 3
+            catch {
+                Write-Log "Error crítico: No se pudo descargar SKLauncher de ninguna fuente." "ERROR"
+                throw $_
+            }
         }
     }
 
-    # 3. Si se descargó el instalador por consola, ejecutarlo
+    # 3. Ejecutar el instalador descargado de forma silenciosa/esperando
     if (Test-Path $InstallerDest) {
         try {
             Write-Log "Ejecutando instalador de SKLauncher..." "INFO"
             Start-Process -FilePath $InstallerDest -Wait
 
-            # Esperar a que el instalador cree la carpeta y el JAR
-            $Timeout = 300
-            $Timer = 0
-            while ($Timer -lt $Timeout) {
+            # Esperar a que el instalador cree la carpeta e instale el archivo .jar
+            $TimeoutSeconds = 300
+            $Elapsed = 0
+
+            while ($Elapsed -lt $TimeoutSeconds) {
                 if (Test-Path $SKLauncherJarPath) {
                     Write-Host "  ¡SKLauncher instalado e identificado con éxito!" -ForegroundColor Green
                     return
                 }
                 Start-Sleep -Seconds 3
-                $Timer += 3
+                $Elapsed += 3
             }
-        } catch {
-            Write-Log "Error al ejecutar el instalador: $_" "ERROR"
+        }
+        catch {
+            Write-Log "Error al ejecutar el instalador de SKLauncher: $_" "ERROR"
+            throw $_
         }
     }
 }
