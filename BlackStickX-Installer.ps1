@@ -6,7 +6,7 @@
 
 $ErrorActionPreference = "Stop"
 
-# 1. FORZAR PROTOCOLOS DE SEGURIDAD TLS 1.2 / TLS 1.3 (Evita 'Conexión terminada de forma inesperada')
+# 1. FORZAR PROTOCOLOS DE SEGURIDAD TLS 1.2 / TLS 1.3
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
 
 # 2. CONFIGURACIÓN DE CODIFICACIÓN EN CONSOLA
@@ -80,7 +80,6 @@ function Write-Log {
 # FUNCIONES DE ENTORNO Y DESCARGA
 # -----------------------------------------------------------------
 function Initialize-Environment {
-    # Crea todas las carpetas necesarias antes de realizar descargas
     $FoldersToCreate = @($MinecraftDir, $WorkDir, $SKLauncherDir)
     foreach ($Folder in $FoldersToCreate) {
         if (-not (Test-Path $Folder)) {
@@ -97,13 +96,11 @@ function Invoke-SecureDownload {
     )
     Write-Log "Descargando $FileName..." "INFO"
     
-    # Asegurar la existencia de la carpeta contenedora del archivo
     $ParentFolder = Split-Path $DestinationPath -Parent
     if (-not (Test-Path $ParentFolder)) {
         New-Item -ItemType Directory -Path $ParentFolder -Force | Out-Null
     }
 
-    # Intento principal con WebClient nativo .NET
     try {
         $WebClient = New-Object System.Net.WebClient
         $WebClient.Headers.Add("User-Agent", $Global:UserAgent)
@@ -111,7 +108,6 @@ function Invoke-SecureDownload {
         Write-Log "Descarga exitosa: $FileName" "SUCCESS"
     }
     catch {
-        # Método alternativo secundario
         try {
             $ProgressPreference = 'SilentlyContinue'
             Invoke-WebRequest -Uri $Url -OutFile $DestinationPath -UserAgent $Global:UserAgent -UseBasicParsing -ErrorAction Stop
@@ -162,7 +158,7 @@ function Safe-ExtractArchive {
 }
 
 # -----------------------------------------------------------------
-# DETECCIÓN E INSTALACIÓN INTELIGENTE DE JAVA 18 Y JAVA 21
+# DETECCIÓN E INSTALACIÓN INTELIGENTE DE JAVA 18 Y JAVA 21 (CON BLINDAJE DE ERRORES)
 # -----------------------------------------------------------------
 function Get-InstalledJavaPath {
     Param ([int]$MajorVersion)
@@ -180,22 +176,30 @@ function Get-InstalledJavaPath {
             $Executables = Get-ChildItem -Path $Folder -Filter "java.exe" -Recurse -ErrorAction SilentlyContinue
             foreach ($Exe in $Executables) {
                 try {
-                    $FileVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($Exe.FullName).ProductVersion
-                    if ($FileVersion -match "^$MajorVersion\.") {
+                    $Info = Get-ItemProperty -Path $Exe.FullName -ErrorAction SilentlyContinue
+                    $Version = $Info.VersionInfo.ProductVersion
+                    if ([string]::IsNullOrEmpty($Version)) {
+                        $Version = $Info.VersionInfo.FileVersion
+                    }
+                    if ($Version -match "^$MajorVersion\.") {
                         return $Exe.FullName
                     }
-                } catch {}
+                } catch {
+                    continue
+                }
             }
         }
     }
 
-    # 2. Verificar en la consola si está activo globalmente (PATH)
-    if (Get-Command java -ErrorAction SilentlyContinue) {
-        $VersionOutput = & java -version 2>&1 | Out-String
-        if ($VersionOutput -match "version `"$MajorVersion\.") {
-            return (Get-Command java).Source
+    # 2. Verificar Java activo en consola (PATH)
+    try {
+        if (Get-Command java -ErrorAction SilentlyContinue) {
+            $VersionOutput = & java -version 2>&1 | Out-String
+            if ($VersionOutput -match "`"$MajorVersion\.") {
+                return (Get-Command java).Source
+            }
         }
-    }
+    } catch {}
 
     return $null
 }
@@ -245,7 +249,6 @@ function Deploy-SKLauncherAndWait {
     $InstallerDest = Join-Path $WorkDir "SKlauncher_Setup.exe"
     $Downloaded = $false
 
-    # 1. Intentar con el instalador .exe
     try {
         Invoke-SecureDownload -Url $Downloads["SKLauncherExe"] -DestinationPath $InstallerDest -FileName "Instalador SKLauncher (.exe)"
         $Downloaded = $true
@@ -254,7 +257,6 @@ function Deploy-SKLauncherAndWait {
         Write-Log "Aviso: No se pudo bajar el .exe. Intentando descargar versión .jar..." "WARN"
     }
 
-    # 2. Descargar el .jar si no se pudo bajar el ejecutable
     if (-not $Downloaded) {
         try {
             Invoke-SecureDownload -Url $Downloads["SKLauncherJarOfficial"] -DestinationPath $SKLauncherJarPath -FileName "SKLauncher Oficial (.jar)"
@@ -274,7 +276,6 @@ function Deploy-SKLauncherAndWait {
         }
     }
 
-    # 3. Ejecutar el instalador descargado
     if (Test-Path $InstallerDest) {
         try {
             Write-Log "Ejecutando instalador de SKLauncher..." "INFO"
@@ -476,10 +477,8 @@ function Invoke-FullInstallation {
     $ChosenRam = Get-UserRamChoice
     Initialize-Environment
     
-    # Comprueba e instala Java 18 y Java 21 solo si faltan
     $Java18Exe = Ensure-JavaEnvironments
     
-    # Instalar Forge con Java 18
     Ensure-ForgeEnvironment -JavaExecutable $Java18Exe
     
     Clean-ModpackDirectories
