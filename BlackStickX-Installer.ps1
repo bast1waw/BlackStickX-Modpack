@@ -26,7 +26,7 @@ $LogPath              = Join-Path $env:TEMP "BlackStickXInstaller.log"
 $WorkDir              = Join-Path $env:TEMP "BlackStickX_Setup"
 
 # Icono del Perfil en Base64 Corregido
-$IconBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAMnUlEQVR4nO2dC1QVxxnH/xcBSQRqFCMQVEDSJqk2SKFiGqOoaVNraxKssagnJCcnsac1SdPq0WhOW09jajRRT2xz0oj4rG+tMa1RtDWW1hqi+AYfhYgiKCi+BbyX6RnugPexO7vAvXt378zvnPFxd3Z3vvu+ncc3M99CIpFIJBKJRCKRSCQiYQuSZ30CwA8BpALoBoCw5EkogOsASgGUA/gKQCWAowCuBPYRJO3hUQB/c1F4e9NlALSvH4A6oE8AkO4+ACD8/23D3wQ46K3eAcB6APUANB3rWwMAgP9nAMgAK9d+B4D07+N5AADlXJ8HAHBeNwCgAODP43vP6H4A9n77/gBAt4b/A/CBAAD091V73hYAAIAbwP8A4P3+AgAAwP8PAIAwBwEAAMjH34c/3gDAh7W/BQAARAB4ACrLq0oWAAAAAElFTkSuQmCC"
+$IconBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAMnUlEQVR4nO2dC1QVxxnH/xcBSQRqFCMQVEDSJqk2SKFiGqOoaVNrarKssagnJCcnsac1SdPq0WhOW09jajRRT2xz0oj4rG+tMa1RtDWW1hqi+AYfhYgiKCi+BbyX6RnugPexO7vAvTx378zvnPNxf3Z3vvu+ncc3M99CIpFIJBKJRCKRSCQiYQuSZ30CwA8BpALoBoCw5EkogOsASgGUA/gKQCWAowCuBPYRJO3hUQB/c1F4e9NlALSvH4A6oE8AkO4+ACD8/23D3wQ46K3eAcB6APUANB3rWwMAgP9nAMgAK9d+B4D07+N5AADlXJ8HAHBeNwCgAODP43vP6H4A9n77/gBAt4b/A/CBAAD091V73hYAAIAbwP8A4P3+AgAAwP8PAIAwBwEAAMjH34c/3gDAh7W/BQAARAB4ACrLq0oWAAAAAElFTkSuQmCC"
 
 # Directorios principales del modpack para gestionar
 $ModpackFolders = @("mods", "config", "defaultconfigs", "kubejs", "resourcepacks", "shaderpacks")
@@ -34,7 +34,7 @@ $ModpackFolders = @("mods", "config", "defaultconfigs", "kubejs", "resourcepacks
 # Objetivos específicos para el subsistema de actualización (Solo Mods y Config)
 $UpdateFolders = @("mods", "config")
 
-# Manifiesto de URLs de descarga (Repositorio y Oficiales como fallback)
+# Manifiesto de URLs de descarga (Repositorio principal y JAR oficial como respaldo seguro)
 $Downloads = @{
     "Config"                  = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/config.zip";
     "Defaultconfigs"          = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/defaultconfigs.zip";
@@ -49,9 +49,8 @@ $Downloads = @{
     "Resourcepacks"           = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/resourcepacks.zip";
     "ServersDat"              = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/servers.dat";
     "Shaderpacks"             = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/shaderpacks.zip";
-    "SKLauncherJar"           = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18.jar";
     "SKLauncherExeRepo"       = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/SKlauncher-3.2.18_Setup.exe";
-    "SKLauncherExeOfficial"   = "https://skoocloud.org/sks/get/latest/win"
+    "SKLauncherJarOfficial"   = "https://github.com/skmedix/sklauncher/releases/latest/download/SKlauncher.jar"
 }
 
 # -----------------------------------------------------------------
@@ -228,22 +227,37 @@ function Check-InitialLauncherSetup {
 
 function Deploy-SKLauncherAndWait {
     Write-Log "Descargando instalador de SKLauncher..." "INFO"
-    $InstallerDest = Join-Path $WorkDir "SKlauncher_Setup.exe"
+    if (-not (Test-Path $SKLauncherDir)) {
+        New-Item -ItemType Directory -Path $SKLauncherDir | Out-Null
+    }
     
+    $InstallerDest = Join-Path $WorkDir "SKlauncher_Setup.exe"
+    $DownloadedSuccessfully = $false
+    
+    # 1. Intentar descargar desde el repositorio del usuario
     try {
         Invoke-SecureDownload -Url $Downloads["SKLauncherExeRepo"] -DestinationPath $InstallerDest -FileName "Instalador de SKLauncher (Repositorio)"
+        $DownloadedSuccessfully = $true
     }
     catch {
-        Write-Log "Fallo la descarga desde el repositorio. Intentando desde la fuente oficial..." "WARN"
+        Write-Log "Aviso: No se pudo descargar desde el repositorio de GitHub (el archivo puede no existir o falló la red)." "WARN"
+    }
+
+    # 2. Si falla el repositorio, descargar el JAR oficial directamente a su ruta final
+    if (-not $DownloadedSuccessfully) {
+        Write-Log "Descargando SKLauncher oficial directamente..." "WARN"
         try {
-            Invoke-SecureDownload -Url $Downloads["SKLauncherExeOfficial"] -DestinationPath $InstallerDest -FileName "Instalador de SKLauncher (Oficial)"
+            Invoke-SecureDownload -Url $Downloads["SKLauncherJarOfficial"] -DestinationPath $SKLauncherJarPath -FileName "SKLauncher Oficial (.jar)"
+            Write-Host "  ¡SKLauncher descargado y listo!" -ForegroundColor Green
+            return
         }
         catch {
-            Write-Log "Error crítico: No se pudo descargar SKLauncher de ninguna fuente." "ERROR"
+            Write-Log "Error crítico: No se pudo descargar SKLauncher de ninguna fuente disponible." "ERROR"
             throw $_
         }
     }
 
+    # Si se descargó el .exe del repositorio con éxito, ejecutarlo
     try {
         Start-Process -FilePath $InstallerDest -Wait
 
@@ -461,7 +475,6 @@ function Remove-LauncherProfiles {
 # GESTIÓN Y VERIFICACIÓN DE JAVA 18 Y JAVA 21
 # -----------------------------------------------------------------
 function Verify-And-Install-Java {
-    # 1. Verificar y gestionar Java 18
     $Java18Path = "C:\Program Files\Java\jdk-18.0.2.1\bin\java.exe"
     if (-not (Test-Path $Java18Path)) {
         Write-Log "Java 18 no encontrado en su ruta habitual. Procediendo a instalar..." "WARN"
@@ -478,7 +491,6 @@ function Verify-And-Install-Java {
         Write-Log "Java 18 ya se encuentra instalado." "SUCCESS"
     }
 
-    # 2. Verificar y gestionar Java 21
     $Java21Path = "C:\Program Files\Java\jdk-21\bin\java.exe"
     $AlternativeJava21Path = "C:\Program Files\Java\jdk-22\bin\java.exe"
     
