@@ -6,14 +6,14 @@
 
 $ErrorActionPreference = "Stop"
 
-# Forzar protocolos SSL/TLS modernos para que GitHub no cierre la conexión
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
+# 1. FORZAR PROTOCOLOS DE SEGURIDAD TLS 1.2 / TLS 1.3 (Evita 'Conexión terminada de forma inesperada')
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
 
-# Prevenir errores de codificación en la consola
+# 2. CONFIGURACIÓN DE CODIFICACIÓN EN CONSOLA
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
-# Cabecera de navegador real
+# Cabecera para imitar un navegador web real
 $Global:UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 # -----------------------------------------------------------------
@@ -31,13 +31,13 @@ $LogPath              = Join-Path $env:TEMP "BlackStickXInstaller.log"
 $WorkDir              = Join-Path $env:TEMP "BlackStickX_Setup"
 
 # Icono del Perfil en Base64
-$IconBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAMnUlEQVR4nO2dC1QVxxnH/xcBSQRqFCMQVEDSJqk2SKFiGqOoaVNraxKssagnJCcnsac1SdPq0WhOW09jajRRT2xz0oj4rG+tMa1RtDWW1hqi+AYfhYgiKCi+BbyX6RnugPexO7vAvXt378zvnPFxd3Z39vu+ncc3M99CIpFIJBKJRCKRSCQiYQuSZ30CwA8BpALoBoCw5EkogOsASgGUA/gKQCWAowCuBPYRJO3hUQB/c1F4e9NlALSvH4A6oE8AkO4+ACD8/23D3wQ46K3eAcB6APUANB3rWwMAgP9nAMgAK9d+B4D07+N5AADlXJ8HAHBeNwCgAODP43vP6H4A9n77/gBAt4b/A/CBAAD091V73hYAAIAbwP8A4P3+AgAAwP8PAIAwBwEAAMjH34c/3gDAh7W/BQAARAB4ACrLq0oWAAAAAElFTkSuQmCC"
+$IconBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAMnUlEQVR4nO2dC1QVxxnH/xcBSQRqFCMQVEDSJqk2SKFiGqOoaVNraxKssagnJCcnsac1SdPq0WhOW09jajRRT2xz0oj4rG+tMa1RtDWW1hqi+AYfhYgiKCi+BbyX6RnugPexO7vAvXt378zvnPFxd3Z39vu+ncc3M99CIpFIJBKJRCKRSCQiYQuSZ30CwA8BpALoBoCw5EkogOsASgGUA/gKQCWAowCuBPYRJO3hUQP/c1F4e9NlALSvH4A6oE8AkO4+ACD8/23D3wQ46K3eAcB6APUANB3rWwMAgP9nAMgAK9d+B4D07+N5AADlXJ8HAHBeNwCgAODP43vP6H4A9n77/gBAt4b/A/CBAAD091V73hYAAIAbwP8A4P3+AgAAwP8PAIAwBwEAAMjH34c/3gDAh7W/BQAARAB4ACrLq0oWAAAAAElFTkSuQmCC"
 
 # Directorios principales del modpack
 $ModpackFolders = @("mods", "config", "defaultconfigs", "kubejs", "resourcepacks", "shaderpacks")
 $UpdateFolders  = @("mods", "config")
 
-# Manifiesto de URLs de descarga
+# Enlaces de descarga del repositorio
 $Downloads = @{
     "Config"                 = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/config.zip";
     "Defaultconfigs"         = "https://github.com/bast1waw/BlackStickX-Modpack/releases/download/v1.0.0/defaultconfigs.zip";
@@ -77,18 +77,15 @@ function Write-Log {
 }
 
 # -----------------------------------------------------------------
-# FUNCIONES PRINCIPALES
+# FUNCIONES DE DESCARGA Y ENTORNO
 # -----------------------------------------------------------------
 function Initialize-Environment {
-    Write-Log "Inicializando directorios de trabajo..." "INFO"
-    if (-not (Test-Path $MinecraftDir)) {
-        New-Item -ItemType Directory -Path $MinecraftDir -Force | Out-Null
-    }
-    if (-not (Test-Path $WorkDir)) {
-        New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
-    }
-    if (-not (Test-Path $SKLauncherDir)) {
-        New-Item -ItemType Directory -Path $SKLauncherDir -Force | Out-Null
+    # Crea todas las carpetas necesarias antes de cualquier descarga
+    $FoldersToCreate = @($MinecraftDir, $WorkDir, $SKLauncherDir)
+    foreach ($Folder in $FoldersToCreate) {
+        if (-not (Test-Path $Folder)) {
+            New-Item -ItemType Directory -Path $Folder -Force | Out-Null
+        }
     }
 }
 
@@ -100,28 +97,25 @@ function Invoke-SecureDownload {
     )
     Write-Log "Descargando $FileName..." "INFO"
     
-    # Crear carpetas contenedoras si no existen
+    # Asegurar la existencia de la carpeta contenedora del archivo destino
     $ParentFolder = Split-Path $DestinationPath -Parent
     if (-not (Test-Path $ParentFolder)) {
         New-Item -ItemType Directory -Path $ParentFolder -Force | Out-Null
     }
 
+    # Intento de descarga usando la clase .NET WebClient (no es bloqueada por GitHub)
     try {
-        # Método robusto con WebClient y User-Agent para evitar "Conexión terminada de forma inesperada"
-        $webClient = New-Object System.Net.WebClient
-        $webClient.Headers.Add("User-Agent", $Global:UserAgent)
-        $webClient.DownloadFile($Url, $DestinationPath)
-        
-        Write-Log "Descarga completada: $FileName" "SUCCESS"
+        $WebClient = New-Object System.Net.WebClient
+        $WebClient.Headers.Add("User-Agent", $Global:UserAgent)
+        $WebClient.DownloadFile($Url, $DestinationPath)
+        Write-Log "Descarga exitosa: $FileName" "SUCCESS"
     }
     catch {
-        # Respando con Invoke-WebRequest si falla WebClient
+        # Respaldo secundario mediante BITS / PowerShell puro
         try {
-            $OldProgress = $ProgressPreference
             $ProgressPreference = 'SilentlyContinue'
             Invoke-WebRequest -Uri $Url -OutFile $DestinationPath -UserAgent $Global:UserAgent -UseBasicParsing -ErrorAction Stop
-            $ProgressPreference = $OldProgress
-            Write-Log "Descarga completada (método alternativo): $FileName" "SUCCESS"
+            Write-Log "Descarga exitosa (Método Secundario): $FileName" "SUCCESS"
         }
         catch {
             Write-Log "Error al descargar $FileName desde $Url. Detalles: $_" "ERROR"
@@ -136,7 +130,7 @@ function Safe-ExtractArchive {
         [string]$ExtractLocation,
         [switch]$IsShaderpack
     )
-    Write-Log "Extrayendo paquete $(Split-Path $ZipPath -Leaf)..." "INFO"
+    Write-Log "Extrayendo $(Split-Path $ZipPath -Leaf)..." "INFO"
     try {
         if (-not (Test-Path $ExtractLocation)) {
             New-Item -ItemType Directory -Path $ExtractLocation -Force | Out-Null
@@ -147,40 +141,92 @@ function Safe-ExtractArchive {
             if (Test-Path $TempExtractDir) { Remove-Item $TempExtractDir -Recurse -Force }
             New-Item -ItemType Directory -Path $TempExtractDir -Force | Out-Null
 
-            if (Get-Command Expand-Archive -ErrorAction SilentlyContinue) {
-                Expand-Archive -Path $ZipPath -DestinationPath $TempExtractDir -Force
-            } else {
-                [System.Reflection.Assembly]::LoadWithPartialName("System.IO.Compression.FileSystem") | Out-Null
-                [System.IO.Compression.ZipFile]::ExtractToDirectory($ZipPath, $TempExtractDir)
-            }
+            Expand-Archive -Path $ZipPath -DestinationPath $TempExtractDir -Force
 
             $SubItems = Get-ChildItem -Path $TempExtractDir
             if ($SubItems.Count -eq 1 -and $SubItems[0].PSIsContainer) {
-                $InnerDir = $SubItems[0].FullName
-                Get-ChildItem -Path $InnerDir | Move-Item -Destination $ExtractLocation -Force
+                Get-ChildItem -Path $SubItems[0].FullName | Move-Item -Destination $ExtractLocation -Force
             } else {
                 Get-ChildItem -Path $TempExtractDir | Move-Item -Destination $ExtractLocation -Force
             }
             Remove-Item -Path $TempExtractDir -Recurse -Force -ErrorAction SilentlyContinue
         } 
         else {
-            if (Get-Command Expand-Archive -ErrorAction SilentlyContinue) {
-                Expand-Archive -Path $ZipPath -DestinationPath $ExtractLocation -Force
-            } else {
-                [System.Reflection.Assembly]::LoadWithPartialName("System.IO.Compression.FileSystem") | Out-Null
-                [System.IO.Compression.ZipFile]::ExtractToDirectory($ZipPath, $ExtractLocation)
-            }
+            Expand-Archive -Path $ZipPath -DestinationPath $ExtractLocation -Force
         }
     }
     catch {
-        Write-Log "Error durante la extracción del paquete: $_" "ERROR"
+        Write-Log "Error durante la extracción: $_" "ERROR"
         throw $_
+    }
+}
+
+# -----------------------------------------------------------------
+# FLUJO DE INSTALACIÓN DE SKLAUNCHER Y VERIFICACIÓN
+# -----------------------------------------------------------------
+function Deploy-SKLauncherAndWait {
+    Write-Log "Descargando e instalando SKLauncher automáticamente..." "INFO"
+    
+    $InstallerDest = Join-Path $WorkDir "SKlauncher_Setup.exe"
+    $Downloaded = $false
+
+    # 1. Intentar el ejecutable de tu Release
+    try {
+        Invoke-SecureDownload -Url $Downloads["SKLauncherExe"] -DestinationPath $InstallerDest -FileName "Instalador SKLauncher (.exe)"
+        $Downloaded = $true
+    }
+    catch {
+        Write-Log "Aviso: No se pudo bajar el .exe. Intentando bajar .jar..." "WARN"
+    }
+
+    # 2. Si no bajó el ejecutable, descargar el .jar oficial
+    if (-not $Downloaded) {
+        try {
+            Invoke-SecureDownload -Url $Downloads["SKLauncherJarOfficial"] -DestinationPath $SKLauncherJarPath -FileName "SKLauncher Oficial (.jar)"
+            Write-Host "  ¡SKLauncher (.jar) descargado y listo!" -ForegroundColor Green
+            return
+        }
+        catch {
+            # 3. Descargar el .jar directo de tu repositorio
+            try {
+                Invoke-SecureDownload -Url $Downloads["SKLauncherJar"] -DestinationPath $SKLauncherJarPath -FileName "SKLauncher Backup (.jar)"
+                Write-Host "  ¡SKLauncher (.jar) descargado y listo!" -ForegroundColor Green
+                return
+            }
+            catch {
+                Write-Log "Error crítico: Fallaron todas las opciones de descarga de SKLauncher." "ERROR"
+                throw $_
+            }
+        }
+    }
+
+    # Ejecución silenciosa si bajó el ejecutable
+    if (Test-Path $InstallerDest) {
+        try {
+            Write-Log "Ejecutando instalador de SKLauncher..." "INFO"
+            Start-Process -FilePath $InstallerDest -Wait
+
+            # Esperar a que quede instalado el .jar
+            $Timeout = 60
+            $Elapsed = 0
+            while ($Elapsed -lt $Timeout) {
+                if (Test-Path $SKLauncherJarPath) {
+                    Write-Host "  ¡SKLauncher instalado correctamente!" -ForegroundColor Green
+                    return
+                }
+                Start-Sleep -Seconds 2
+                $Elapsed += 2
+            }
+        }
+        catch {
+            Write-Log "Error al ejecutar el instalador: $_" "ERROR"
+            throw $_
+        }
     }
 }
 
 function Check-InitialLauncherSetup {
     Clear-Host
-    # Garantizar que las carpetas de trabajo existan ANTES de verificar nada
     Initialize-Environment
 
     Write-Host "====================================================================" -ForegroundColor Cyan
@@ -195,147 +241,52 @@ function Check-InitialLauncherSetup {
     }
 
     if ($Response -eq "si" -or $Response -eq "s") {
-        Write-Log "El usuario indicó que tiene Minecraft original. Buscando ejecutable..." "INFO"
-        
-        $PossibleOfficialPaths = @(
-            "$env:LOCALAPPDATA\Microsoft\WindowsApps\MinecraftLauncher.exe",
-            "$env:ProgramFiles\Minecraft Launcher\MinecraftLauncher.exe",
-            "${env:ProgramFiles(x86)}\Minecraft Launcher\MinecraftLauncher.exe",
-            "$env:APPDATA\.minecraft\MinecraftLauncher.exe"
-        )
-
-        $FoundOfficial = $false
-        foreach ($path in $PossibleOfficialPaths) {
-            if (Test-Path $path) {
-                Write-Host "  Minecraft Original Detectado en: $path" -ForegroundColor Green
-                Write-Log "Minecraft Original Detectado en: $path" "SUCCESS"
-                $FoundOfficial = $true
-                break
-            }
-        }
-
-        if (-not $FoundOfficial) {
-            try {
-                $uwpCheck = Get-AppxPackage -Name *Microsoft.MinecraftUWP* -ErrorAction SilentlyContinue
-                if ($uwpCheck) {
-                    Write-Host "  Minecraft Original Detectado (Paquete UWP/Windows Store)." -ForegroundColor Green
-                    Write-Log "Minecraft Original Detectado vía UWP." "SUCCESS"
-                    $FoundOfficial = $true
-                }
-            } catch {}
-        }
+        Write-Log "El usuario indicó que tiene Minecraft original." "INFO"
     } 
     else {
         Write-Log "El usuario indicó que NO tiene Minecraft original. Verificando SKLauncher..." "INFO"
         
         if (Test-Path $SKLauncherJarPath) {
             Write-Host "  SKLauncher detectado en: $SKLauncherJarPath" -ForegroundColor Green
-            Write-Log "SKLauncher detectado en: $SKLauncherJarPath" "SUCCESS"
         } else {
-            Write-Host "  SKLauncher no encontrado. Procediendo a instalarlo automáticamente..." -ForegroundColor Yellow
+            Write-Host "  SKLauncher no encontrado. Procediendo a instalarlo..." -ForegroundColor Yellow
             Deploy-SKLauncherAndWait
         }
     }
 
-    Write-Host "`n  Verificación completada. Abriendo el menú principal..." -ForegroundColor Cyan
+    Write-Host "`n  Verificación completada. Entrando al menú..." -ForegroundColor Cyan
     Start-Sleep -Seconds 2
 }
 
-function Deploy-SKLauncherAndWait {
-    Write-Log "Descargando e instalando SKLauncher de forma automática..." "INFO"
-    
-    $InstallerDest = Join-Path $WorkDir "SKlauncher_Setup.exe"
-    $DownloadedSuccessfully = $false
-    
-    # 1. Intentar descargar el instalador .exe del repositorio
-    try {
-        Invoke-SecureDownload -Url $Downloads["SKLauncherExe"] -DestinationPath $InstallerDest -FileName "Instalador SKLauncher (.exe)"
-        $DownloadedSuccessfully = $true
-    }
-    catch {
-        Write-Log "Aviso: No se pudo bajar el .exe. Intentando descargar el .jar oficial de SKLauncher..." "WARN"
-    }
-
-    # 2. Si falla el ejecutable, descargar directamente el .jar de SKLauncher
-    if (-not $DownloadedSuccessfully) {
-        try {
-            Invoke-SecureDownload -Url $Downloads["SKLauncherJarOfficial"] -DestinationPath $SKLauncherJarPath -FileName "SKLauncher Oficial (.jar)"
-            Write-Host "  ¡SKLauncher descargado y listo!" -ForegroundColor Green
-            return
-        }
-        catch {
-            # Tercera alternativa directa desde tu propio release del .jar
-            try {
-                Invoke-SecureDownload -Url $Downloads["SKLauncherJar"] -DestinationPath $SKLauncherJarPath -FileName "SKLauncher Backup (.jar)"
-                Write-Host "  ¡SKLauncher descargado y listo!" -ForegroundColor Green
-                return
-            }
-            catch {
-                Write-Log "Error crítico: No se pudo descargar SKLauncher de ninguna fuente." "ERROR"
-                throw $_
-            }
-        }
-    }
-
-    # 3. Ejecutar el instalador descargado de forma silenciosa/esperando
-    if (Test-Path $InstallerDest) {
-        try {
-            Write-Log "Ejecutando instalador de SKLauncher..." "INFO"
-            Start-Process -FilePath $InstallerDest -Wait
-
-            # Esperar a que el instalador cree la carpeta e instale el archivo .jar
-            $TimeoutSeconds = 300
-            $Elapsed = 0
-
-            while ($Elapsed -lt $TimeoutSeconds) {
-                if (Test-Path $SKLauncherJarPath) {
-                    Write-Host "  ¡SKLauncher instalado e identificado con éxito!" -ForegroundColor Green
-                    return
-                }
-                Start-Sleep -Seconds 3
-                $Elapsed += 3
-            }
-        }
-        catch {
-            Write-Log "Error al ejecutar el instalador de SKLauncher: $_" "ERROR"
-            throw $_
-        }
-    }
-}
-
+# -----------------------------------------------------------------
+# RESTO DE OPCIONES (RAM, CONFIGURACIONES DE PERFIL Y FLUJOS)
+# -----------------------------------------------------------------
 function Get-UserRamChoice {
-    $TotalPhysicalMemory = (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
-    $TotalRamGB = [Math]::Round($TotalPhysicalMemory / 1GB)
-    $MaxSafeRam = [Math]::Floor($TotalRamGB * 0.75)
-    if ($MaxSafeRam -lt 4) { $MaxSafeRam = 4 }
-
-    $RecommendedRam = 4
-    if ($TotalRamGB -ge 16) { $RecommendedRam = 8 }
-    elseif ($TotalRamGB -ge 12) { $RecommendedRam = 6 }
+    $TotalRamGB = [Math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
+    $MaxSafeRam = [Math]::Max(4, [Math]::Floor($TotalRamGB * 0.75))
+    $RecommendedRam = if ($TotalRamGB -ge 16) { 8 } elseif ($TotalRamGB -ge 12) { 6 } else { 4 }
 
     Clear-Host
     Write-Host "====================================================================" -ForegroundColor Cyan
     Write-Host "                CONFIGURACIÓN DE MEMORIA RAM (JVM)                  " -ForegroundColor Cyan
     Write-Host "====================================================================" -ForegroundColor Cyan
-    Write-Host "  Tu PC cuenta con un total de: $TotalRamGB GB de RAM." -ForegroundColor Gray
-    Write-Host "  Selecciona cuánta memoria deseas asignar a BlackStickX:" -ForegroundColor White
+    Write-Host "  Tu PC cuenta con: $TotalRamGB GB de RAM total." -ForegroundColor Gray
     Write-Host "--------------------------------------------------------------------" -ForegroundColor Cyan
     
     $Options = @{}
     $Index = 1
 
-    Write-Host "  [$Index] 4 GB  <-- [MINIMO REQUERIDO]" -ForegroundColor Yellow
+    Write-Host "  [$Index] 4 GB  <-- [MÍNIMO]" -ForegroundColor Yellow
     $Options.Add($Index.ToString(), 4)
     $Index++
 
     if ($RecommendedRam -gt 4 -and $RecommendedRam -le $MaxSafeRam) {
-        Write-Host "  [$Index] $RecommendedRam GB  <-- [RECOMENDADO PARA TU PC]" -ForegroundColor Green
+        Write-Host "  [$Index] $RecommendedRam GB  <-- [RECOMENDADO]" -ForegroundColor Green
         $Options.Add($Index.ToString(), $RecommendedRam)
         $Index++
     }
 
-    $PossibleGbs = @(6, 8, 12, 16, 24, 32)
-    foreach ($gb in $PossibleGbs) {
+    foreach ($gb in @(6, 8, 12, 16)) {
         if ($gb -le $MaxSafeRam -and $gb -ne 4 -and $gb -ne $RecommendedRam) {
             Write-Host "  [$Index] $gb GB" -ForegroundColor White
             $Options.Add($Index.ToString(), $gb)
@@ -343,104 +294,59 @@ function Get-UserRamChoice {
         }
     }
     Write-Host "====================================================================" -ForegroundColor Cyan
-    Write-Host ""
 
     $Selection = ""
     while (-not $Options.ContainsKey($Selection)) {
-        $Selection = Read-Host "  Selecciona una opción de asignación [1-$($Index-1)]"
+        $Selection = Read-Host "  Selecciona una opción [1-$($Index-1)]"
     }
 
     return $Options[$Selection]
 }
 
 function Configure-OfficialLauncherProfile {
-    Param (
-        [int]$SelectedRamGB = 8
-    )
-    Write-Log "Configurando el perfil 'blackstickx' con icono personalizado..." "INFO"
-    
-    $TargetForgeVersion = if ($script:ForgeTargetID) { $script:ForgeTargetID } else { "1.20.1-forge-47.4.22" }
-    $ProfilesJsonPath   = if ($script:OfficialProfilesJson) { $script:OfficialProfilesJson } else { Join-Path $env:APPDATA ".minecraft\launcher_profiles.json" }
-
-    $JvmArgs   = "-Xmx${SelectedRamGB}G -XX:+UnlockExperimentalVMOptions -XX:+UseG1GC -XX:G1NewSizePercent=20 -XX:G1ReservePercent=20 -XX:MaxGCPauseMillis=50 -XX:G1HeapRegionSize=32M"
+    Param ([int]$SelectedRamGB = 8)
+    $JvmArgs = "-Xmx${SelectedRamGB}G -XX:+UnlockExperimentalVMOptions -XX:+UseG1GC -XX:G1NewSizePercent=20 -XX:G1ReservePercent=20 -XX:MaxGCPauseMillis=50 -XX:G1HeapRegionSize=32M"
     $ProfileID = "blackstickx"
 
     $NewProfile = [ordered]@{
-        "created"       = "2026-07-31T19:41:10.635Z"
-        "icon"          = $script:IconBase64
+        "created"       = "2026-08-01T00:00:00.000Z"
+        "icon"          = $IconBase64
         "javaArgs"      = $JvmArgs
         "lastUsed"      = (Get-Date -Format "yyyy-MM-ddTHH:mm:ss.fffZ")
-        "lastVersionId" = $TargetForgeVersion
+        "lastVersionId" = $ForgeTargetID
         "name"          = "BlackStickX Server"
         "type"          = "custom"
     }
 
     $JsonObject = $null
-    if (Test-Path $ProfilesJsonPath) {
+    if (Test-Path $OfficialProfilesJson) {
         try {
-            $RawText = [System.IO.File]::ReadAllText($ProfilesJsonPath)
-            if (-not [string]::IsNullOrWhiteSpace($RawText)) {
-                $JsonObject = $RawText | ConvertFrom-Json
-            }
-        }
-        catch {}
+            $RawText = [System.IO.File]::ReadAllText($OfficialProfilesJson)
+            if (-not [string]::IsNullOrWhiteSpace($RawText)) { $JsonObject = $RawText | ConvertFrom-Json }
+        } catch {}
     }
 
     if ($null -eq $JsonObject) {
-        $JsonObject = [PSCustomObject]@{
-            profiles = [PSCustomObject]@{}
-            settings = [PSCustomObject]@{ keepLauncherOpen = $true }
-            version  = 6
-        }
+        $JsonObject = [PSCustomObject]@{ profiles = [PSCustomObject]@{}; settings = [PSCustomObject]@{ keepLauncherOpen = $true }; version = 6 }
     }
 
     $JsonObject | Select-Object -Property * | Add-Member -MemberType NoteProperty -Name "selectedProfile" -Value $ProfileID -Force
-
-    if ($null -eq $JsonObject.profiles) {
-        $JsonObject | Add-Member -MemberType NoteProperty -Name "profiles" -Value ([PSCustomObject]@{})
-    }
+    if ($null -eq $JsonObject.profiles) { $JsonObject | Add-Member -MemberType NoteProperty -Name "profiles" -Value ([PSCustomObject]@{}) }
 
     $ProfilesDict = [ordered]@{}
     $ProfilesDict[$ProfileID] = [PSCustomObject]$NewProfile
 
-    $Props = Get-Member -InputObject $JsonObject.profiles -MemberType NoteProperty
-    foreach ($prop in $Props) {
-        $pName = $prop.Name
-        if ($pName -ne $ProfileID) {
-            $pData = $JsonObject.profiles.$pName
-            if ($pData.lastVersionId -ne $TargetForgeVersion) {
-                $ProfilesDict[$pName] = $pData
-            }
-        }
+    foreach ($prop in (Get-Member -InputObject $JsonObject.profiles -MemberType NoteProperty)) {
+        if ($prop.Name -ne $ProfileID) { $ProfilesDict[$prop.Name] = $JsonObject.profiles.$($prop.Name) }
     }
 
     $JsonObject.profiles = $ProfilesDict
-
-    try {
-        $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-        $JsonString = ConvertTo-Json $JsonObject -Depth 10
-        
-        $ParentDir = Split-Path $ProfilesJsonPath -Parent
-        if (-not (Test-Path $ParentDir)) { New-Item -ItemType Directory -Path $ParentDir -Force | Out-Null }
-
-        [System.IO.File]::WriteAllText($ProfilesJsonPath, $JsonString, $Utf8NoBom)
-        Write-Log "Perfil 'blackstickx' actualizado con icono y configurado." "SUCCESS"
-    }
-    catch {
-        Write-Log "Error al escribir en launcher_profiles.json: $_" "ERROR"
-        throw $_
-    }
+    [System.IO.File]::WriteAllText($OfficialProfilesJson, (ConvertTo-Json $JsonObject -Depth 10), (New-Object System.Text.UTF8Encoding($false)))
 }
 
 function Configure-SKLauncherProfile {
-    Param (
-        [int]$SelectedRamGB = 4
-    )
-    $SKDir = Join-Path $env:APPDATA "sklauncher"
-    $SKJsonPath = Join-Path $SKDir "profiles.json"
-
-    if (-not (Test-Path $SKDir)) { New-Item -ItemType Directory -Path $SKDir -Force | Out-Null }
-
+    Param ([int]$SelectedRamGB = 4)
+    $SKJsonPath = Join-Path $SKLauncherDir "profiles.json"
     $RamInMB = [int]($SelectedRamGB * 1024)
     $TargetProfileId = "profile-blackstickx-modpack"
     
@@ -460,55 +366,26 @@ function Configure-SKLauncherProfile {
 
     if (Test-Path $SKJsonPath) {
         try {
-            $RawText = [System.IO.File]::ReadAllText($SKJsonPath)
-            if (-not [string]::IsNullOrWhiteSpace($RawText)) {
-                $ParsedJson = $RawText | ConvertFrom-Json
-                if ($null -ne $ParsedJson.profiles) {
-                    foreach ($p in $ParsedJson.profiles) {
-                        if ($p.id -ne $TargetProfileId) { $ProfilesList.Add($p) }
-                    }
+            $ParsedJson = (Get-Content $SKJsonPath -Raw) | ConvertFrom-Json
+            if ($null -ne $ParsedJson.profiles) {
+                foreach ($p in $ParsedJson.profiles) {
+                    if ($p.id -ne $TargetProfileId) { $ProfilesList.Add($p) }
                 }
             }
-        }
-        catch {}
+        } catch {}
     }
 
     $ProfilesStructure = [ordered]@{ "profiles" = $ProfilesList.ToArray() }
-    $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($SKJsonPath, (ConvertTo-Json $ProfilesStructure -Depth 10), $Utf8NoBom)
-}
-
-function Remove-LauncherProfiles {
-    if (Test-Path $OfficialProfilesJson) {
-        try {
-            $RawText = [System.IO.File]::ReadAllText($OfficialProfilesJson)
-            if (-not [string]::IsNullOrWhiteSpace($RawText)) {
-                $Parsed = $RawText | ConvertFrom-Json
-                $ProfilesDict = [ordered]@{}
-                foreach ($prop in (Get-Member -InputObject $Parsed.profiles -MemberType NoteProperty)) {
-                    if ($prop.Name -ne "blackstickx") { $ProfilesDict[$prop.Name] = $Parsed.profiles.($prop.Name) }
-                }
-                $Parsed.profiles = $ProfilesDict
-                [System.IO.File]::WriteAllText($OfficialProfilesJson, (ConvertTo-Json $Parsed -Depth 30), (New-Object System.Text.UTF8Encoding($false)))
-            }
-        }
-        catch {}
-    }
+    [System.IO.File]::WriteAllText($SKJsonPath, (ConvertTo-Json $ProfilesStructure -Depth 10), (New-Object System.Text.UTF8Encoding($false)))
 }
 
 function Get-Java18Binary {
-    $StandardPaths = @("$env:ProgramFiles\Java", "${env:ProgramFiles(x86)}\Java", "$env:ProgramFiles\Eclipse Foundation")
-    foreach ($Folder in $StandardPaths) {
+    foreach ($Folder in @("$env:ProgramFiles\Java", "${env:ProgramFiles(x86)}\Java", "$env:ProgramFiles\Eclipse Foundation")) {
         if (Test-Path $Folder) {
             foreach ($Exe in (Get-ChildItem -Path $Folder -Filter "java.exe" -Recurse -ErrorAction SilentlyContinue)) {
-                if ([System.Diagnostics.FileVersionInfo]::GetVersionInfo($Exe.FullName).ProductVersion -match "^18\.") {
-                    return $Exe.FullName
-                }
+                if ([System.Diagnostics.FileVersionInfo]::GetVersionInfo($Exe.FullName).ProductVersion -match "^18\.") { return $Exe.FullName }
             }
         }
-    }
-    if (Get-Command java -ErrorAction SilentlyContinue) {
-        if ((& java -version 2>&1 | Out-String) -match 'version "18\.') { return (Get-Command java).Source }
     }
     return $null
 }
@@ -522,10 +399,6 @@ function Ensure-Java18Environment {
         $JavaPath = Get-Java18Binary
     }
     return $JavaPath
-}
-
-function Get-ForgeInstallationStatus {
-    return (Test-Path (Join-Path $VersionsDir "$ForgeTargetID\$ForgeTargetID.json"))
 }
 
 function Ensure-ForgeEnvironment {
@@ -582,19 +455,9 @@ function Invoke-UpdateWorkflow {
     Configure-SKLauncherProfile -SelectedRamGB $ChosenRam
 }
 
-function Invoke-RepairWorkflow {
-    Remove-LauncherProfiles
-    Clean-ModpackDirectories
-    Invoke-FullInstallation
-}
-
-function Invoke-Uninstallation {
-    Clean-ModpackDirectories
-    Remove-LauncherProfiles
-    if (Test-Path (Join-Path $VersionsDir $ForgeTargetID)) { Remove-Item -Path (Join-Path $VersionsDir $ForgeTargetID) -Recurse -Force -ErrorAction SilentlyContinue }
-    if (Test-Path (Join-Path $MinecraftDir "manifest.json")) { Remove-Item (Join-Path $MinecraftDir "manifest.json") -Force }
-}
-
+# -----------------------------------------------------------------
+# INICIO Y MENÚ PRINCIPAL
+# -----------------------------------------------------------------
 Check-InitialLauncherSetup
 
 function Show-MainMenu {
@@ -628,7 +491,7 @@ do {
         switch ($Choice) {
             "1" {
                 Invoke-FullInstallation
-                Write-Host "`n¡Instalación completada con el icono personalizado!" -ForegroundColor Green
+                Write-Host "`n¡Instalación completada correctamente!" -ForegroundColor Green
                 [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }
             "2" {
@@ -637,12 +500,13 @@ do {
                 [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }
             "3" {
-                Invoke-RepairWorkflow
+                Clean-ModpackDirectories
+                Invoke-FullInstallation
                 Write-Host "`n¡Reparación completada!" -ForegroundColor Green
                 [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }
             "4" {
-                Invoke-Uninstallation
+                Clean-ModpackDirectories
                 Write-Host "`nDesinstalado con éxito." -ForegroundColor Green
                 [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }
@@ -655,7 +519,7 @@ do {
         }
     }
     catch {
-        Write-Host "`nOcurrió un error. Revisa el log en: $LogPath" -ForegroundColor Red
+        Write-Host "`nOcurrió un error. Consulta el registro en: $LogPath" -ForegroundColor Red
         [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
     }
 } while ($Choice -ne "6")
